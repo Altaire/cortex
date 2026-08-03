@@ -1,63 +1,252 @@
 # Cortex
 
-Исполнитель скриптов работы с Markdown-документами, часть шагов которых делают LLM-агенты.
-Cortex агентов не запускает и к LLM не обращается: он выполняет всё, для чего есть данные,
-и печатает остаток скрипта со сводкой — каких агентов запустить, кого ждать, где нужно решение
-координатора. Спецификация — документ «Cortex — спецификация v1».
+**Cortex is a small, deterministic executor for plans that build and edit Markdown documents with the help of LLM agents.**
+
+You describe the work as a short script: "insert this text after Chapter 1", "let an agent write Chapter 3 and put it after Chapter 2", "when Chapter 3 is ready, let another agent write Chapter 4 from it". Cortex runs everything it can run right now. Everything it cannot run yet stays in the script, with a status that says why.
+
+Cortex never calls an LLM itself. It only does the deterministic work: finding sections, inserting and replacing text, checking structure and tracking state. The **coordinator** does the rest. The coordinator is a person or an LLM such as Claude Code: it starts the agents Cortex asks for and feeds the script back in.
+
+## Why
+
+Writing a large document with several agents is mostly bookkeeping:
+
+- which parts are done, which are being written, which wait for others;
+- where exactly each new piece goes;
+- what to do when an agent's output is broken;
+- how to resume after the session is gone.
+
+An LLM coordinator is bad at keeping all of that in its context, and loses it when the context is compacted. Cortex keeps all of it in plain files instead:
+
+- **The plan lives in a file, not in the coordinator's memory.** Every run prints the *remaining* script, so the next step is always visible.
+- **Agents' results never pass through the coordinator's context.** An agent writes its result to a file, and Cortex inserts it into the document.
+- **Edits are exact.** Sections are addressed by heading (`"# Chapter 3..."`). Cortex refuses edits that would break the heading structure or make a reference ambiguous.
+- **Work survives restarts.** The state is in `.cortex/`, and any session can continue with one command.
+
+## The pipeline
+
+```
+          ┌───────────── script (stdin) ─────────────┐
+          ▼                                          │
+     cortex.py ── does everything it can now ──► document.md
+          │
+          ├─► stdout: the remaining script + a summary
+          │          (done / launch / running / waiting / decide)
+          └─► .cortex/: agent instructions, state, history
+                │
+   coordinator reads "launch: X → prompts/X.md" and starts an agent:
+   "Follow the instructions in .cortex/work/<script>/prompts/X.md"
+                │
+   the agent writes status → result → message (STATUS: done)
+                │
+          └──────── coordinator runs cortex.py again ───────┘
+                    until the summary says "status: done"
+```
+
+## Install
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt     # markdown-it-py
 python cortex.py help
-python cortex.py < plan.cortex
-python cortex.py < .cortex/scripts/<скрипт>.cortex
 ```
 
-## Пример
+Python 3.9+.
+
+## Example
+
+`book.md` before the run:
+
+```markdown
+# Chapter 1. Introduction
+
+Intro.
+
+# Chapter 2. Methods
+
+Methods.
+```
+
+`plan.cortex` holds the script lines and the named text blocks in one stream:
 
 ```
-script chapters
-"doc.md" alias maindoc1
+script book
+"book.md" alias main
 
-text0 insert to=maindoc1 after="# Раздел 2..."
-task1 agenttask {task1.out head="# Раздел 4..." has=["# Раздел 4... > ## Выводы"]} insert to=maindoc1 after="# Раздел 3..."
-[task2, task1.out, maindoc1"# Раздел 3..."] agenttask {task2.out head="# Раздел 5..."} insert to=maindoc1 before=END
+note insert to=main after="# Chapter 1..."
+task3 agenttask {task3.out head="# Chapter 3..." has=["# Chapter 3... > ## Summary"]} insert to=main after="# Chapter 2..."
+[task4, task3.out] agenttask {task4.out head="# Chapter 4..."} insert to=main before=END
 
 === context ===
-Пиши кратко.
+Write concisely, in a neutral academic tone.
 === / ===
-=== text0 ===
-Дополнение к обзору.
+=== note ===
+A short note added to the introduction.
 === / ===
-=== task1 ===
-Проанализируй раздел 3 и напиши раздел 4.
+=== task3 ===
+Read chapter 2 and write chapter 3 (Results).
 === / ===
-=== task2 ===
-Проанализируй раздел 4 и напиши раздел 5.
+=== task4 ===
+Using chapter 3, write chapter 4 (Discussion).
 === / ===
 ```
 
-Первый прогон вставит `text0`, выдаст инструкцию для `task1.out` (`launch`) и оставит `task2.out`
-ждать. Координатор запускает агента одной строкой — «Выполни инструкцию из
-`.cortex/work/chapters/prompts/task1.out.md`» — и после его работы снова подаёт сохранённый скрипт.
+What the lines mean:
 
-## Команды
+- `"book.md" alias main` gives the file a name.
+- `note insert …` inserts the block `note` after the section whose heading starts with "Chapter 1".
+- `task3 agenttask {…} insert …` asks an agent to do `task3`. The result must start with a `# Chapter 3…` heading and contain `## Summary`. When the result is ready, Cortex inserts it after Chapter 2.
+- `[task4, task3.out] agenttask …` gives the agent the task `task4` plus the result of `task3` as input. This line waits until that result exists.
+- The `context` block is added to every agent's instructions.
 
-| Команда | Что делает |
+### Run 1: the script comes in on standard input
+
+```bash
+python cortex.py < plan.cortex
+```
+
+stdout (the remaining script; the same text is saved to `.cortex/scripts/book.cortex`):
+
+```
+script book
+"book.md" alias main
+
+\ run 1 · 2026-11-01 03:06
+\ done:     note → main after "# Chapter 1..."
+\ launch:   task3.out → .cortex/work/book/prompts/task3.out.md
+\ waiting:  task4.out (ждёт task3.out)
+
+task3 agenttask {task3.out head="# Chapter 3..." has=["# Chapter 3... > ## Summary"]} insert to=main after="# Chapter 2..."
+[task4, task3.out] agenttask {task4.out head="# Chapter 4..."} insert to=main before=END
+```
+
+stderr:
+
+```
+cortex: сохранено  .cortex/scripts/book.cortex
+cortex: история   .cortex/history/book/001/
+cortex: дальше    python cortex.py < .cortex/scripts/book.cortex
+```
+
+How to read run 1:
+
+- `done:` — the note is already in `book.md`, and its line has left the script.
+- `launch:` — start an agent and tell it: *"Follow the instructions in `.cortex/work/book/prompts/task3.out.md`"*. The instructions contain the context, the task and the inputs, plus the files to write: a start mark, the result, and a message whose first line is `STATUS: done` or `STATUS: failed`.
+- `waiting:` — `task4.out` needs `task3.out`, which does not exist yet. (`ждёт` means "waits for".)
+
+Lines that start with `\` are comments. Cortex writes the summary as comments and ignores them on input.
+
+### Run 2: the agent has finished, so feed the saved script back
+
+```bash
+python cortex.py < .cortex/scripts/book.cortex
+```
+
+```
+\ run 2 · 2026-11-01 03:06
+\ done:     task3.out → main after "# Chapter 2..."
+\ launch:   task4.out → .cortex/work/book/prompts/task4.out.md
+\ message:  task3.out → .cortex/work/book/messages/task3.out.md
+
+[task4, task3.out] agenttask {task4.out head="# Chapter 4..."} insert to=main before=END
+```
+
+Cortex first checked the result. It has the right heading and the required `## Summary`, and the heading levels skip nothing. Then Cortex inserted it. `message:` points to the agent's note for the coordinator, for example a proposal to change the plan.
+
+### Run 3: the second agent has finished
+
+```
+\ run 3 · 2026-11-01 03:06
+\ status: done
+\ done:     task4.out → main before END
+```
+
+`python cortex.py outline book.md` now prints the map of the document:
+
+```
+book.md · 31 слов · заголовков 5
+# Chapter 1. Introduction       12
+# Chapter 2. Methods             5
+# Chapter 3. Results             9
+  ## Summary                     4
+# Chapter 4. Discussion          5
+```
+
+## When something goes wrong
+
+| Situation | What Cortex does |
 | --- | --- |
-| `python cortex.py < файл` | прогон; вывод = остаток скрипта, он же в `.cortex/scripts/` |
-| `python cortex.py plan < файл` | прогноз без выполнения и без записи |
-| `python cortex.py status` | состояние всех скриптов без прогона |
-| `python cortex.py outline doc.md` | карта документа |
-| `python cortex.py reset СКРИПТ РЕЗУЛЬТАТ` | задание агента — заново |
-| `python cortex.py help [слово]` | справка |
+| The agent's result breaks the contract (no required heading, a skipped level, service lines) | Moves the attempt to `attempts/` with the reason and shows `launch` again ("attempt 2 of 3: reason"). The reason is added to the agent's instructions. |
+| The attempts are used up | Shows `decide` with the reason. Fix the task, or run `python cortex.py reset <script> <result>`. |
+| The agent started but sent no message within the timeout | Shows `decide`: check the agent or reset the job. |
+| The task text or an input changed | Archives the old result and shows `launch` again. |
+| An insert would skip a heading level, or would swallow the following subsections | Leaves the line in the script with `decide` and does not change the document. |
+| A new heading would make another line's reference ambiguous | Refuses the write with `decide`. |
+| A line refers to a section that an earlier line will create | The line waits. |
+| The script has an error (unknown word or name, a missing parameter, two writes on one line…) | Lists every error with its line number and runs nothing. |
+| An old or original version of the script is fed again | Refuses it, so that nothing is inserted twice. |
 
-## Устройство
+Status and error messages are currently in Russian. Key words such as `done`, `launch` and `decide` are in English.
 
-| Папка | Что там |
+## Language in one screen
+
+```
+script NAME                               name of the script
+"path.md" alias NAME                      an existing file
+"path.md" create NAME                     a file, created empty if missing
+set attempts=3 timeout=30m autocommit=off
+=== NAME === … === / ===                  a text block (block "context" goes to every agent)
+
+NAME                                      a block, an agent's result or a document
+"text"                                    literal text (inside an agent's input list: a file path)
+NAME"# Heading..."                        a section of a document, block or result
+"# Chapter 3..."                          heading that starts with "Chapter 3" (up to a word boundary)
+"# Chapter 3. Results"                    exact heading
+"# Chapter 3... > ## Summary"             a subsection inside a section
+[task, input1, input2]                    the task for an agent, then its inputs
+{result head="# …" has=["# … > ## …"]}    what the agent's result must look like
+START  END                                beginning and end of a document
+```
+
+| Word | What it does |
 | --- | --- |
-| `fvm/` | копия ядра Forth-VM: словарь, типы стековых комментариев, проверка, трасса |
-| `mdlib/` | Markdown на markdown-it-py: заголовки, разделы, шаблоны, правки, проверки, карта |
-| `cx/` | поток, лексер, фронтенд (строка → код fvm), хранилище `.cortex`, окружение прогона, задания агентам, CLI |
-| `cxwords/` | слова языка: `insert` `replace` `delete` `move` `save` `join` `relevel` `agenttask` |
+| `insert to= after=/before=` | insert text |
+| `replace to= section=` | replace a section, including its heading |
+| `delete to= section=` | delete a section |
+| `move to= section= after=/before=` | move a section |
+| `save to="file"` | write text to a separate file |
+| `join` | a list of texts → one text |
+| `relevel top=N` | shift the headings so that the top one is level N |
+| `agenttask {…}` | a job for an agent; the line waits until the result is ready |
 
-Тестов пока нет.
+Rules: one line is one unit of work, done entirely or left in the script. A line has at most one write, and it is the last word. Writes to one document happen in line order.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `python cortex.py < file` | run |
+| `python cortex.py plan < file` | forecast only: nothing is executed or written |
+| `python cortex.py status` | the state of every script, without running it |
+| `python cortex.py outline doc.md` | the heading map of a document |
+| `python cortex.py reset SCRIPT RESULT` | restart an agent's job |
+| `python cortex.py help [word]` | help |
+| `--root DIR` | the workspace (default: the current folder) |
+
+## Files
+
+```
+.cortex/
+  scripts/<script>.cortex      the current script, the one to feed to the next run
+  history/<script>/NNN/        input, output, step log, trace of every run
+  work/<script>/               blocks, prompts, inputs, results, status, messages, attempts, state.json
+```
+
+## Code layout
+
+| Folder | Contents |
+| --- | --- |
+| `fvm/` | a small Forth-style VM: words, typed stack comments, load-time checks, traces |
+| `mdlib/` | Markdown on markdown-it-py: headings, sections, patterns, edits, structure checks, outline |
+| `cx/` | stream, lexer, compiler (script line → VM code), `.cortex` store, run environment, agent jobs, CLI |
+| `cxwords/` | the words of the language |
+
+There are no tests yet.
