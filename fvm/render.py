@@ -42,7 +42,7 @@ def forth_literal(value: Any) -> str:
         return f'" {escaped}"'
     if isinstance(value, (list, tuple)):
         return "[ " + " ".join(forth_literal(v) for v in value) + " ]" if value else "[ ]"
-    raise ValueError(f"значение {value!r} нельзя записать литералом Forth")
+    raise ValueError(f"value {value!r} cannot be written as a Forth literal")
 
 
 def _scalar(value: Any) -> bool:

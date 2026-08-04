@@ -36,7 +36,7 @@ class _Lexer:
         self.line = line
 
     def error(self, message: str, col: int) -> CortexError:
-        return CortexError(f"{message} (позиция {col + 1})", self.line)
+        return CortexError(f"{message} (column {col + 1})", self.line)
 
     def tokens(self) -> list[Tok]:
         out: list[Tok] = []
@@ -63,9 +63,9 @@ class _Lexer:
         if c == "{":
             return self.sequence(i, "}", "spec")
         if c in "]}":
-            raise self.error(f"лишняя «{c}»", i)
+            raise self.error(f"unexpected \"{c}\"", i)
         if c == "=":
-            raise self.error("«=» без имени параметра перед ним", i)
+            raise self.error("\"=\" without a parameter name before it", i)
         j = i
         while j < self.n and self.s[j] not in _STOP and not self.s[j].isspace():
             j += 1
@@ -80,9 +80,9 @@ class _Lexer:
 
     def value(self, i: int) -> tuple[Tok, int]:
         if i >= self.n or self.s[i].isspace() or self.s[i] in ",\\":
-            raise self.error("после «=» нет значения", i)
+            raise self.error("no value after \"=\"", i)
         if self.s[i] == "{":
-            raise self.error("значение параметра не может быть {…}", i)
+            raise self.error("a parameter value cannot be {…}", i)
         return self.item(i)
 
     def sequence(self, i: int, close: str, kind: str) -> tuple[Tok, int]:
@@ -91,11 +91,11 @@ class _Lexer:
         while True:
             j = self.skip(j)
             if j >= self.n or self.s[j] == "\\":
-                raise self.error(f"нет закрывающей «{close}»", i)
+                raise self.error(f"missing closing \"{close}\"", i)
             if self.s[j] == close:
                 return Tok(kind, items, i), j + 1
             if self.s[j] in "[{":
-                raise self.error("вложенные [ ] и { } не поддерживаются", j)
+                raise self.error("nested [ ] and { } are not supported", j)
             tok, j = self.item(j)
             items.append(tok)
 
@@ -112,7 +112,7 @@ class _Lexer:
                 return "".join(chars), j + 1
             chars.append(c)
             j += 1
-        raise self.error("строка без закрывающей кавычки", i)
+        raise self.error("string without a closing quote", i)
 
 
 def lex(text: str, line: int) -> list[Tok]:

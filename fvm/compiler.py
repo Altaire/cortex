@@ -86,7 +86,7 @@ def tokenize(text: str, file: str) -> list[Token]:
         elif word == "(":                                  # ( comment ) / ( stack comment )
             end = text.find(")", j)
             if end < 0:
-                raise ForthSyntaxError(f"{file}:{line}: нет закрывающей ) у комментария")
+                raise ForthSyntaxError(f"{file}:{line}: comment without a closing )")
             body = text[j:end]
             tokens.append(Token("comment", "( " + " ".join(body.split()) + " )", body, file, line))
             line += body.count("\n")
@@ -105,7 +105,7 @@ def tokenize(text: str, file: str) -> list[Token]:
                 chars.append(text[k])
                 k += 1
             if k >= n:
-                raise ForthSyntaxError(f"{file}:{start_line}: строка без закрывающей кавычки")
+                raise ForthSyntaxError(f"{file}:{start_line}: string without a closing quote")
             tokens.append(Token("str", '"', "".join(chars), file, start_line))
             i = k + 1
         elif word == '""':
@@ -144,7 +144,7 @@ class Compiler:
     def _next(self, what: str) -> Token:
         token = self._peek()
         if token is None:
-            raise ForthSyntaxError(f"{self.file}: неожиданный конец файла, ожидалось {what}")
+            raise ForthSyntaxError(f"{self.file}: unexpected end of file, expected {what}")
         self.pos += 1
         return token
 
@@ -176,24 +176,24 @@ class Compiler:
                 above = "\n".join(t.text for t in doc) if doc and doc[-1].line == token.line - 1 else ""
                 words.append(self._definition(above))
             elif self._is(token, "TOOL"):
-                raise self._error(token, "TOOL — только в шаблоне вызова (scripts/mcp/*.fs, compile_template)")
+                raise self._error(token, "TOOL — only in a call template (scripts/mcp/*.fs, compile_template)")
             elif allow_script:
                 self.scopes = [set()]
                 script.extend(self._sequence(stops=(":", "TOOL"), top=True))
             else:
-                raise self._error(token, f"в файле библиотеки вне определения: {token.text!r} "
-                                         "(код верхнего уровня допустим только в скриптах)")
+                raise self._error(token, f"outside a definition in a library file: {token.text!r} "
+                                         "(top-level code is allowed only in scripts)")
             doc = []
         return Unit(words, tools, script)
 
     def _definition(self, doc: str) -> Word:
         start = self._next(":")
-        name_token = self._next("имя слова")
+        name_token = self._next("a word name")
         if name_token.kind != "word" or name_token.text in KEYWORDS:
-            raise self._error(name_token, f"после «:» ожидалось имя слова, а не {name_token.text!r}")
-        sig_token = self._next("стековый комментарий")
+            raise self._error(name_token, f"a word name expected after \":\", not {name_token.text!r}")
+        sig_token = self._next("a stack comment")
         if sig_token.kind != "comment":
-            raise self._error(sig_token, f"у слова {name_token.text} нет стекового комментария ( вход -- выход )")
+            raise self._error(sig_token, f"word {name_token.text} has no stack comment ( in -- out )")
         try:
             sig = Signature.parse(sig_token.value)
         except ValueError as exc:
@@ -233,9 +233,9 @@ class Compiler:
             self.pos += 1
         start = self._peek()
         if not self._is(start, "TOOL"):
-            raise ForthSyntaxError(f"{self.file}: шаблон вызова начинается с TOOL имя … END-TOOL")
+            raise ForthSyntaxError(f"{self.file}: a call template starts with TOOL name … END-TOOL")
         self.pos += 1
-        name = self._next("имя инструмента").text
+        name = self._next("a tool name").text
         args: list[ToolArg] = []
         parts: list[tuple[str, Any]] = []
         while True:
@@ -243,8 +243,8 @@ class Compiler:
             if self._is(token, "END-TOOL"):
                 break
             if self._is(token, "ARG"):
-                arg_name = self._next("имя аргумента")
-                arg_type = self._next("тип аргумента")
+                arg_name = self._next("an argument name")
+                arg_type = self._next("an argument type")
                 try:
                     arg = ToolArg(arg_name.text, parse_type(arg_type.text))
                 except ValueError as exc:
@@ -262,19 +262,19 @@ class Compiler:
                 args.append(arg)
             elif self._is(token, "DESCRIPTION"):
                 while self._peek() is not None and not self._is(self._peek(), "ARG", "END-TOOL"):
-                    piece = self._next("описание")
+                    piece = self._next("a description")
                     if piece.kind == "line":
                         continue
                     parts.append(("str", piece.value) if piece.kind == "str" else ("word", piece.text))
             elif token.kind == "line":
                 continue
             else:
-                raise self._error(token, f"в TOOL ожидались ARG, DESCRIPTION или END-TOOL, а не {token.text!r}")
+                raise self._error(token, f"ARG, DESCRIPTION or END-TOOL expected in TOOL, not {token.text!r}")
         body_start = self._peek()
         self.scopes = [{arg.name for arg in args}]
         code = self._sequence(stops=(":", "TOOL"), top=True)
         if self._peek() is not None:
-            raise self._error(self._peek(), "в шаблоне вызова после программы ничего не должно быть")
+            raise self._error(self._peek(), "nothing may follow the program in a call template")
         text = "\n".join(self.text.splitlines()[body_start.line - 1:]).strip() if body_start else ""
         return Tool(name=name, args=args, description_parts=parts, source=start.src, code=code,
                     file=self.file, text=text)
@@ -290,7 +290,7 @@ class Compiler:
             if token is None:
                 if top:
                     return code
-                raise ForthSyntaxError(f"{self.file}: неожиданный конец файла, ожидалось {' / '.join(stops)}")
+                raise ForthSyntaxError(f"{self.file}: unexpected end of file, expected {' / '.join(stops)}")
             if token.kind in ("line", "comment"):
                 self.pos += 1
                 continue
@@ -319,21 +319,21 @@ class Compiler:
         if word == "MATCH":
             branches = []
             while True:
-                head = self._next("ветка MATCH или END")
+                head = self._next("a MATCH branch or END")
                 if self._is(head, "END"):
                     break
                 if head.kind in ("line", "comment"):
                     continue
                 arrow = self._next("->")
                 if not self._is(arrow, "->"):
-                    raise self._error(head, f"в MATCH ожидалось «Тип ->», а не {head.text!r}")
+                    raise self._error(head, f"\"Type ->\" expected in MATCH, not {head.text!r}")
                 try:
                     branch_type = parse_type(head.text)
                 except ValueError as exc:
                     raise self._error(head, str(exc)) from None
                 branches.append((branch_type, self._sequence(stops=("END",), match_mode=True)))
             if not branches:
-                raise self._error(token, "MATCH без веток")
+                raise self._error(token, "MATCH without branches")
             return Match(branches, token.src)
         if word in ("EACH", "PARALLEL-EACH"):
             self.scopes.append(set())
@@ -361,15 +361,15 @@ class Compiler:
                 if self._is(name, "}"):
                     break
                 if name.kind != "word" or name.text in KEYWORDS:
-                    raise self._error(name, f"неверное имя локальной переменной {name.text!r}")
+                    raise self._error(name, f"invalid local name {name.text!r}")
                 names.append(name.text)
             self.scopes[-1].update(names)
             return LocalSet(names, token.src)
         if word == "[']":
-            target = self._next("имя слова после [']")
+            target = self._next("a word name after [']")
             return Tick(target.text, token.src)
         if word in KEYWORDS:
-            raise self._error(token, f"{word!r} здесь неуместно")
+            raise self._error(token, f"{word!r} is out of place here")
         if self._local(word):
             return LocalGet(word, token.src)
         return Call(word, token.src)
@@ -389,7 +389,7 @@ class Compiler:
             elif token.kind in ("line", "comment"):
                 continue
             else:
-                raise self._error(token, f"в списке [ … ] допустимы только литералы, а не {token.text!r}")
+                raise self._error(token, f"only literals are allowed in [ … ], not {token.text!r}")
 
 
 def compile_source(text: str, file: str, allow_script: bool = False) -> Unit:

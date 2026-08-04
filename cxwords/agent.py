@@ -10,6 +10,6 @@ from fvm.annotations import word
 
 @word("agenttask", "( job:Src|List spec:ResultSpec -- Text )", caps=("agent",), params=("spec",))
 def agenttask(env: Any, job: Any, spec: Any) -> TextValue:
-    """Задание агенту: задание или [задание, входы…] → результат {имя head= has=}.
-    Пока результата нет, строка ждёт (launch, running, decide)."""
+    """A job for an agent: a task or [task, inputs…] → a result {name head= has=}.
+    Until the result is ready the line waits (launch, running, decide)."""
     return run_agent(env, job, spec)

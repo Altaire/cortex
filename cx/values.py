@@ -80,12 +80,12 @@ class SectionRef(Src):
 @dataclass(frozen=True)
 class TextValue(Src):
     text: str
-    origin: str = "текст"
+    origin: str = "text"
 
     def forth(self) -> str:
         if len(self.text) <= 40 and "\n" not in self.text:
             return _quote(self.text)
-        return f"‹{self.origin}: {len(self.text)} симв.›"
+        return f"‹{self.origin}: {len(self.text)} chars›"
 
     def label(self) -> str:
         return self.origin

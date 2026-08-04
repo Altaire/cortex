@@ -32,7 +32,7 @@ def structure_issues(text_or_heads: str | list[Heading]) -> list[Issue]:
     for prev, head in zip(heads, heads[1:]):
         if head.level > prev.level + 1:
             issues.append(Issue(("jump", prev.level, prev.text, head.level, head.text),
-                                f"после \"{prev}\" идёт \"{head}\" без уровня {'#' * (prev.level + 1)}"))
+                                f"\"{head}\" follows \"{prev}\" without a {'#' * (prev.level + 1)} level"))
     return issues
 
 
@@ -49,8 +49,8 @@ def capture_issue(lines: list[str], index: int, chunk: str) -> str | None:
     for head in headings("\n".join(lines) + "\n"):
         if head.line >= index:
             if head.level > top:
-                return (f"вставка поглотит подраздел \"{head}\": после вставленного "
-                        f"\"{chunk_heads[0]}\" он станет его частью")
+                return (f"the insert would swallow subsection \"{head}\": after the inserted "
+                        f"\"{chunk_heads[0]}\" it would become part of it")
             return None
     return None
 
@@ -59,28 +59,28 @@ def chunk_issues(text: str, head: Segment | None, has: list[HeadingPath]) -> lis
     """What is wrong with an agent's result (empty list: nothing)."""
     lines = to_lines(text)
     if not strip_blank(lines):
-        return ["результат пуст"]
+        return ["the result is empty"]
     problems: list[str] = []
     for number, line in enumerate(lines, 1):
         if _SERVICE.match(line) or "@@@" in line:
-            problems.append(f"служебная строка {number}: {line.strip()[:60]}")
+            problems.append(f"service line {number}: {line.strip()[:60]}")
     heads = headings(text)
     if head is not None:
         first_line = next(i for i, line in enumerate(lines) if line.strip())
         if not heads or heads[0].line != first_line or not head.matches(heads[0]):
-            problems.append(f"результат должен начинаться с заголовка \"{head}\"")
+            problems.append(f"the result must start with the heading \"{head}\"")
         else:
             extra = [h for h in heads[1:] if h.level <= head.level]
             if extra:
-                problems.append(f"в результате должен быть один заголовок уровня {'#' * head.level}, "
-                                f"лишний: \"{extra[0]}\"")
+                problems.append(f"the result must have one {'#' * head.level} heading, "
+                                f"extra: \"{extra[0]}\"")
     problems.extend(str(i) for i in structure_issues(heads))
     for path in has:
         found, depth = candidates(heads, path)
         if not found:
-            problems.append(f"нет \"{path}\"")
+            problems.append(f"missing \"{path}\"")
         elif len(found) > 1:
-            problems.append(f"\"{path}\" встречается {len(found)} раза")
+            problems.append(f"\"{path}\" occurs {len(found)} times")
     return problems
 
 

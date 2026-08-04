@@ -87,19 +87,19 @@ class Program:
 def check_rel_path(path: str, line: int | None) -> str:
     """A path inside the workspace, written with / ; not into .cortex."""
     if not path or path.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", path):
-        raise CortexError(f"путь «{path}» должен быть относительным (от рабочей папки)", line)
+        raise CortexError(f"path \"{path}\" must be relative (to the workspace)", line)
     parts = PurePosixPath(path.replace("\\", "/")).parts
     if ".." in parts:
-        raise CortexError(f"путь «{path}» выходит за рабочую папку", line)
+        raise CortexError(f"path \"{path}\" leaves the workspace", line)
     if parts and parts[0] == ".cortex":
-        raise CortexError(f"путь «{path}» ведёт в .cortex — туда пишет только Cortex", line)
+        raise CortexError(f"path \"{path}\" points into .cortex — only Cortex writes there", line)
     return PurePosixPath(*parts).as_posix()
 
 
 def parse_duration(text: str, line: int | None) -> int:
     match = _DURATION.match(text)
     if not match:
-        raise CortexError(f"длительность «{text}»: число и s, m или h (30m, 2h, 90s)", line)
+        raise CortexError(f"duration \"{text}\": a number and s, m or h (30m, 2h, 90s)", line)
     return int(match.group(1)) * {"s": 1, "m": 60, "h": 3600}[match.group(2) or "m"]
 
 
@@ -149,7 +149,7 @@ def read_declarations(stream: Stream) -> Declarations:
 
 def _name_tok(tok: Tok, what: str, line: int) -> str:
     if tok.kind != "name" or not NAME_RE.match(tok.value):
-        raise CortexError(f"{what}: ожидалось имя (латинские буквы, цифры, _ . -)", line)
+        raise CortexError(f"{what}: a name expected (Latin letters, digits, _ . -)", line)
     return tok.value
 
 
@@ -157,20 +157,20 @@ def _declaration(decls: Declarations, toks: list[Tok], line: int) -> bool:
     words = [t.value if t.kind == "name" else None for t in toks]
     if words[0] == "script":
         if len(toks) != 2:
-            raise CortexError("объявление: script имя", line)
+            raise CortexError("declaration: script NAME", line)
         if decls.script is not None:
-            raise CortexError(f"скрипт уже назван: {decls.script}", line)
+            raise CortexError(f"the script is already named: {decls.script}", line)
         decls.script = _name_tok(toks[1], "script", line)
         return True
     if "alias" in words or "create" in words:
         kind = "alias" if "alias" in words else "create"
         rest = [t for t in toks if not (t.kind == "name" and t.value == kind)]
         if len(toks) != 3 or len(rest) != 2 or rest[0].kind != "str":
-            raise CortexError(f"объявление: \"путь\" {kind} имя", line)
+            raise CortexError(f"declaration: \"path\" {kind} NAME", line)
         path = check_rel_path(rest[0].value, line)
         name = _name_tok(rest[1], kind, line)
         if name in decls.aliases:
-            raise CortexError(f"имя {name} уже объявлено", line)
+            raise CortexError(f"name {name} is already declared", line)
         decls.aliases[name] = DocRef(name, path)
         if kind == "create":
             decls.creates.add(name)
@@ -178,23 +178,23 @@ def _declaration(decls: Declarations, toks: list[Tok], line: int) -> bool:
     if words[0] == "set":
         for tok in toks[1:]:
             if tok.kind != "kv":
-                raise CortexError("set: только параметры ключ=значение", line)
+                raise CortexError("set: only key=value parameters", line)
             key, value = tok.value
             text = value.value if value.kind in ("name", "str") else None
             if text is None:
-                raise CortexError(f"set {key}=: нужно простое значение", line)
+                raise CortexError(f"set {key}=: a simple value is needed", line)
             if key == "attempts":
                 if not text.isdigit() or int(text) < 1:
-                    raise CortexError("set attempts=: целое число от 1", line)
+                    raise CortexError("set attempts=: an integer from 1", line)
                 decls.settings["attempts"] = int(text)
             elif key == "timeout":
                 decls.settings["timeout"] = parse_duration(text, line)
             elif key == "autocommit":
                 if text not in ("on", "off", "true", "false"):
-                    raise CortexError("set autocommit=: on или off", line)
+                    raise CortexError("set autocommit=: on or off", line)
                 decls.settings["autocommit"] = text in ("on", "true")
             else:
-                raise CortexError(f"set: неизвестная настройка {key} (есть: attempts, timeout, autocommit)", line)
+                raise CortexError(f"set: unknown setting {key} (known: attempts, timeout, autocommit)", line)
         return True
     return False
 
@@ -221,13 +221,13 @@ class Compiler:
     # ----- names -----
     def _declare(self, name: str, ref: Src, line: int | None) -> None:
         if name in self.vm.words or name in DECL_WORDS:
-            raise CortexError(f"имя {name} совпадает со словом языка", line)
+            raise CortexError(f"name {name} is a word of the language", line)
         if name in RESERVED:
-            raise CortexError(f"имя {name} зарезервировано", line)
+            raise CortexError(f"name {name} is reserved", line)
         known = self.names.get(name)
         if known is not None and known != ref:
-            kind = {"Block": "блок", "Result": "результат", "Doc": "документ"}[self.vm.types.of_value(known).name]
-            raise CortexError(f"имя {name} уже занято ({kind})", line)
+            kind = {"Block": "a block", "Result": "a result", "Doc": "a document"}[self.vm.types.of_value(known).name]
+            raise CortexError(f"name {name} is already taken ({kind})", line)
         self.names[name] = ref
 
     def _table(self, stored_blocks: set[str], done_results: set[str]) -> None:
@@ -244,7 +244,7 @@ class Compiler:
                     if name is None:
                         continue
                     if name in self.results:
-                        self.errors.append(CortexError(f"результат {name} уже создаёт строка {self.results[name]}",
+                        self.errors.append(CortexError(f"result {name} is already produced by line {self.results[name]}",
                                                        sl.number))
                         continue
                     self.results[name] = sl.number
@@ -278,15 +278,15 @@ class Compiler:
             latin = word.translate(_CONFUSABLE)
             if latin != word and latin in known:
                 letters = ", ".join(sorted({c for c in word if _CYRILLIC.match(c)}))
-                return CortexError(f"неизвестное слово «{word}»: кириллические буквы ({letters}) — "
-                                   f"может быть, {latin}?", line)
+                return CortexError(f"unknown word \"{word}\": Cyrillic letters ({letters}) — "
+                                   f"did you mean {latin}?", line)
         close = difflib.get_close_matches(word, sorted(known), n=3, cutoff=0.7)
-        hint = f" — может быть, {', '.join(close)}?" if close else ""
-        return CortexError(f"неизвестное имя или слово «{word}»{hint}", line)
+        hint = f" — did you mean {', '.join(close)}?" if close else ""
+        return CortexError(f"unknown name or word \"{word}\"{hint}", line)
 
     def resolve(self, word: str, line: int) -> Src:
         if word in RESERVED:
-            raise CortexError(f"{word} — только значение after=/before=", line)
+            raise CortexError(f"{word} is only a value of after=/before=", line)
         ref = self.names.get(word)
         if ref is None:
             raise self._unknown(word, line)
@@ -317,7 +317,7 @@ class Compiler:
 
     def line(self, sl: SourceLine, toks: list[Tok], comments: list[str]) -> Line:
         n = sl.number
-        src = f"строка {n}"
+        src = f"line {n}"
         code: list[Any] = []
         agent: AgentStep | None = None
         write: WriteStep | None = None
@@ -337,15 +337,15 @@ class Compiler:
                     extra = toks[j]
                     if extra.kind == "spec":
                         if "spec" not in word.params:
-                            raise CortexError(f"{{…}} — описание результата, только после agenttask", n)
+                            raise CortexError(f"{{…}} describes a result and comes only after agenttask", n)
                         spec_tok = extra
                     else:
                         key = extra.value[0]
                         if key not in word.params or key == "spec":
-                            allowed = ", ".join(p + "=" for p in word.params if p != "spec") or "нет"
-                            raise CortexError(f"у слова {word.name} нет параметра {key}= (есть: {allowed})", n)
+                            allowed = ", ".join(p + "=" for p in word.params if p != "spec") or "none"
+                            raise CortexError(f"word {word.name} has no parameter {key}= (it has: {allowed})", n)
                         if key in given:
-                            raise CortexError(f"параметр {key}= указан дважды", n)
+                            raise CortexError(f"parameter {key}= is given twice", n)
                         given[key] = extra.value[1]
                     j += 1
                 values = self.params(word, given, spec_tok, prev, n)
@@ -355,11 +355,11 @@ class Compiler:
                 if word.name == "agenttask":
                     agents += 1
                     if prev is None or not isinstance(prev, (list, BlockRef, ResultRef, SectionRef, DocRef, FileRef)):
-                        raise CortexError("agenttask берёт задание по имени или список [задание, входы…] "
-                                          "прямо перед собой", n)
+                        raise CortexError("agenttask takes a task by name or a list [task, inputs…] "
+                                          "right before it", n)
                     task, inputs = (prev[0], list(prev[1:])) if isinstance(prev, list) else (prev, [])
                     if isinstance(prev, list) and not prev:
-                        raise CortexError("agenttask: пустой список", n)
+                        raise CortexError("agenttask: empty list", n)
                     spec: ResultSpec = bound["spec"]
                     agent = AgentStep(spec.name, task, inputs, spec)
                 if "write" in word.caps:
@@ -376,9 +376,9 @@ class Compiler:
                 i = j
                 continue
             if tok.kind == "kv":
-                raise CortexError(f"параметр {tok.value[0]}= без слова перед ним", n)
+                raise CortexError(f"parameter {tok.value[0]}= without a word before it", n)
             if tok.kind == "spec":
-                raise CortexError("{…} без agenttask перед ним", n)
+                raise CortexError("{…} without agenttask before it", n)
             value = self.obj(tok, n)
             for item in value if isinstance(value, list) else [value]:
                 if isinstance(item, SectionRef) and isinstance(item.base, DocRef):
@@ -388,13 +388,13 @@ class Compiler:
             first = value if first is None else first
             i += 1
         if not code:
-            raise CortexError("пустая строка кода", n)
+            raise CortexError("empty code line", n)
         if agents > 1:
-            raise CortexError("одно задание агенту на строку", n)
+            raise CortexError("one agent job per line", n)
         if writes > 1:
-            raise CortexError("в строке больше одной записи (insert, replace, delete, move, save)", n)
+            raise CortexError("more than one write in the line (insert, replace, delete, move, save)", n)
         if writes == 1 and not (isinstance(code[-1], Call) and "write" in self.vm.words[code[-1].name].caps):
-            raise CortexError("запись (insert, replace, delete, move, save) должна быть последним словом строки", n)
+            raise CortexError("a write (insert, replace, delete, move, save) must be the last word of the line", n)
         for ins in code:
             if isinstance(ins, Call):
                 ins.word = self.vm.words[ins.name]
@@ -404,11 +404,11 @@ class Compiler:
             raise CortexError(str(exc)) from None
         ends_with_agent = isinstance(code[-1], Call) and code[-1].name == "agenttask"
         if left and not (ends_with_agent and len(left) == 1):
-            raise CortexError(f"в конце строки на стеке остаётся {picture(left)}: строка должна заканчиваться "
-                              "записью (insert, replace, delete, move, save) или заданием агенту", n)
+            raise CortexError(f"{picture(left)} is left on the stack at the end of the line: a line must end with "
+                              "a write (insert, replace, delete, move, save) or an agent job", n)
         label = agent.result if agent else self._label(first) if first is not None else write.word if write else "?"
         return Line(number=n, text=sl.text, comments=comments, code=code, agent=agent, write=write,
-                    label=label if agent else f"строка ⟨{n}⟩ · {label}", obj=label, patterns=patterns)
+                    label=label if agent else f"line ⟨{n}⟩ · {label}", obj=label, patterns=patterns)
 
     @staticmethod
     def _label(value: Any) -> str:
@@ -436,27 +436,27 @@ class Compiler:
     # ----- objects -----
     def obj(self, tok: Tok, line: int) -> Any:
         if tok.kind == "str":
-            return TextValue(tok.value, "текст")
+            return TextValue(tok.value, "text")
         if tok.kind == "name":
             if tok.value.isdigit():
-                raise CortexError(f"число {tok.value} — только значение параметра", line)
+                raise CortexError(f"number {tok.value} can only be a parameter value", line)
             return self.resolve(tok.value, line)
         if tok.kind == "sec":
             return self.section(tok, line)
         if tok.kind == "list":
             return [self.item(t, line) for t in tok.value]
-        raise CortexError(f"неожиданное {tok.value!r}", line)  # pragma: no cover
+        raise CortexError(f"unexpected {tok.value!r}", line)  # pragma: no cover
 
     def item(self, tok: Tok, line: int) -> Src:
         if tok.kind == "name":
             if tok.value in self.vm.words:
-                raise CortexError(f"в списке — имена, а не слова ({tok.value})", line)
+                raise CortexError(f"a list holds names, not words ({tok.value})", line)
             return self.resolve(tok.value, line)
         if tok.kind == "str":
             return FileRef(check_rel_path(tok.value, line))
         if tok.kind == "sec":
             return self.section(tok, line)
-        raise CortexError("в списке допустимы имена, \"пути к файлам\" и разделы имя\"шаблон\"", line)
+        raise CortexError("a list may hold names, \"file paths\" and sections name\"pattern\"", line)
 
     def section(self, tok: Tok, line: int) -> SectionRef:
         name, pattern = tok.value
@@ -482,12 +482,12 @@ class Compiler:
                 if optional:
                     values.append(None)
                     continue
-                raise CortexError(f"слову {word.name} нужен параметр {param}=", line)
+                raise CortexError(f"word {word.name} needs parameter {param}=", line)
             values.append(self.convert(base, given[param], word.name, param, line))
         if word.name in ("insert", "move"):
             chosen = [p for p in ("after", "before") if p in given]
             if len(chosen) != 1:
-                raise CortexError(f"{word.name}: нужен ровно один из after= или before=", line)
+                raise CortexError(f"{word.name}: exactly one of after= or before= is needed", line)
         return values
 
     def convert(self, base: str, tok: Tok, word: str, param: str, line: int) -> Any:
@@ -497,29 +497,29 @@ class Compiler:
                 if tok.kind == "name" and ref is None:
                     raise self._unknown(tok.value, line)
                 if not isinstance(ref, DocRef):
-                    raise CortexError(f"{word} {param}=: нужно имя документа из alias или create", line)
+                    raise CortexError(f"{word} {param}=: a document name from alias or create is needed", line)
                 return ref
             if base == "Pos":
                 if tok.kind == "name" and tok.value in RESERVED:
                     return Pos("start" if tok.value == "START" else "end")
                 if tok.kind == "str":
                     return Pos("path", parse_path(tok.value))
-                raise CortexError(f"{word} {param}=: \"# заголовок…\", START или END", line)
+                raise CortexError(f"{word} {param}=: \"# heading…\", START or END", line)
             if base == "Pattern":
                 if tok.kind != "str":
-                    raise CortexError(f"{word} {param}=: нужен \"# заголовок…\"", line)
+                    raise CortexError(f"{word} {param}=: \"# heading…\" is needed", line)
                 return Pattern(parse_path(tok.value))
             if base == "Int":
                 if tok.kind != "name" or not tok.value.isdigit():
-                    raise CortexError(f"{word} {param}=: нужно целое число", line)
+                    raise CortexError(f"{word} {param}=: an integer is needed", line)
                 return int(tok.value)
             if base == "FilePath":
                 if tok.kind != "str":
-                    raise CortexError(f"{word} {param}=: нужен \"путь/к/файлу\"", line)
+                    raise CortexError(f"{word} {param}=: \"path/to/file\" is needed", line)
                 return FilePath(check_rel_path(tok.value, line))
         except MdError as exc:
             raise CortexError(f"{word} {param}=: {exc}", line) from None
-        raise CortexError(f"{word} {param}=: тип {base} не поддерживается", line)  # pragma: no cover
+        raise CortexError(f"{word} {param}=: type {base} is not supported", line)  # pragma: no cover
 
     def spec(self, tok: Tok | None, prev: Any, line: int) -> ResultSpec:
         items = tok.value if tok is not None else []
@@ -531,24 +531,24 @@ class Compiler:
                 name = item.value
                 continue
             if item.kind != "kv":
-                raise CortexError("{…}: имя результата, затем head= и has=", line)
+                raise CortexError("{…}: the result name, then head= and has=", line)
             key, value = item.value
             try:
                 if key == "head":
                     if value.kind != "str":
-                        raise CortexError("head=: нужен \"# заголовок…\"", line)
+                        raise CortexError("head=: \"# heading…\" is needed", line)
                     path = parse_path(value.value)
                     if len(path.segments) != 1:
-                        raise CortexError("head=: один заголовок, без \" > \"", line)
+                        raise CortexError("head=: one heading, without \" > \"", line)
                     head = path.segments[0]
                 elif key == "has":
                     raw = value.value if value.kind == "list" else [value]
                     for one in raw:
                         if one.kind != "str":
-                            raise CortexError("has=: \"# путь > ## …\" или их список", line)
+                            raise CortexError("has=: \"# path > ## …\" or a list of them", line)
                         has.append(parse_path(one.value))
                 else:
-                    raise CortexError(f"{{…}}: неизвестный параметр {key}= (есть head=, has=)", line)
+                    raise CortexError(f"{{…}}: unknown parameter {key}= (known: head=, has=)", line)
             except MdError as exc:
                 raise CortexError(f"{key}=: {exc}", line) from None
         if name is None:
@@ -556,13 +556,13 @@ class Compiler:
             if isinstance(base, (BlockRef, ResultRef)):
                 name = f"{base.name}.out"
             else:
-                raise CortexError("у результата нет имени: agenttask {имя …}", line)
+                raise CortexError("the result has no name: agenttask {name …}", line)
         if not NAME_RE.match(name):
-            raise CortexError(f"имя результата «{name}»: латинские буквы, цифры, _ . -", line)
+            raise CortexError(f"result name \"{name}\": use Latin letters, digits, _ . -", line)
         if head is not None:
             for path in has:
                 if not path.segments[0].compatible(head):
-                    raise CortexError(f"has=: путь \"{path}\" должен начинаться с head \"{head}\"", line)
+                    raise CortexError(f"has=: path \"{path}\" must start with head \"{head}\"", line)
         return ResultSpec(name, head, tuple(has))
 
 

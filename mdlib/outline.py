@@ -24,11 +24,11 @@ def outline(text: str, name: str) -> str:
     for h in heads:
         rows.append(("  " * (h.level - base) + str(h), _num(_words(lines[h.line:h.end]))))
     width = max((len(label) for label, _n in rows), default=0)
-    out = [f"{name} · {_num(_words(lines))} слов · заголовков {len(heads)}"]
+    out = [f"{name} · {_num(_words(lines))} words · {len(heads)} headings"]
     out += [f"{label.ljust(width)}  {count:>7}" for label, count in rows]
     repeats = Counter((h.level, h.text) for h in heads)
     for (level, title), n in repeats.items():
         if n > 1:
-            out.append(f"! \"{'#' * level} {title}\" — {n} раза; ссылаться через путь \" > \"")
+            out.append(f"! \"{'#' * level} {title}\" — {n} times; refer to it with a path \" > \"")
     out += [f"! {issue}" for issue in structure_issues(heads)]
     return "\n".join(out)

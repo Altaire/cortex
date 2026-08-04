@@ -52,8 +52,8 @@ def split_stream(text: str) -> Stream:
                 stream.blocks[current.name] = current
                 current, body = None, []
             elif _OPEN.match(raw):
-                raise CortexError(f"блок {current.name} (строка {current.line}) не закрыт строкой «=== / ===» "
-                                  f"до начала следующего блока", number)
+                raise CortexError(f"block {current.name} (line {current.line}) is not closed with \"=== / ===\" "
+                                  f"before the next block starts", number)
             else:
                 body.append(raw)
             continue
@@ -61,13 +61,13 @@ def split_stream(text: str) -> Stream:
         if opened:
             name = opened.group(1)
             if not _NAME.match(name):
-                raise CortexError(f"имя блока «{name}»: латинские буквы, цифры, _ . -", number)
+                raise CortexError(f"block name \"{name}\": use Latin letters, digits, _ . -", number)
             if name in stream.blocks:
-                raise CortexError(f"блок {name} уже был в потоке (строка {stream.blocks[name].line})", number)
+                raise CortexError(f"block {name} already appeared in the stream (line {stream.blocks[name].line})", number)
             current = Block(name, "", number)
             continue
         if _CLOSE.match(raw) or _ANY_DELIM.match(raw):
-            raise CortexError(f"строка-разделитель без открытого блока: {raw.strip()}", number)
+            raise CortexError(f"delimiter line without an open block: {raw.strip()}", number)
         stripped = raw.strip()
         if not stripped:
             stream.lines.append(SourceLine(number, raw, "blank"))
@@ -80,5 +80,5 @@ def split_stream(text: str) -> Stream:
         else:
             stream.lines.append(SourceLine(number, raw.rstrip(), "code"))
     if current is not None:
-        raise CortexError(f"блок {current.name} не закрыт строкой «=== / ===»", current.line)
+        raise CortexError(f"block {current.name} is not closed with \"=== / ===\"", current.line)
     return stream

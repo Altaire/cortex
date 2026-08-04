@@ -5,10 +5,10 @@ markdown-it parses them as code. A section is the heading line and everything up
 heading of the same or a higher level (fewer #), or to the end of the document.
 
 A pattern names a heading by its level and text:
-    "# Раздел 5. Методы"      exactly this text, level 1
-    "# Раздел 5..."           level 1, the text starts so; the start ends on a word boundary:
-                              "# Раздел 1..." does not find "Раздел 10"
-    "# Раздел 5... > ## Выводы"   a path: "Выводы" inside the section "Раздел 5"
+    "# Chapter 5. Methods"    exactly this text, level 1
+    "# Chapter 5..."          level 1, the text starts so; the start ends on a word boundary:
+                              "# Chapter 1..." does not find "Chapter 10"
+    "# Chapter 5... > ## Summary"   a path: "Summary" inside the section "Chapter 5"
 Spaces after # and repeated spaces do not count; letter case does.
 """
 from __future__ import annotations
@@ -32,18 +32,18 @@ class NotFound(MdError):
     def __init__(self, path: "HeadingPath", depth: int, where: str = "") -> None:
         self.path = path
         self.depth = depth
-        inside = f" внутри \"{HeadingPath(path.segments[:depth])}\"" if depth else ""
-        super().__init__(f"раздел \"{path.segments[depth]}\"{inside} не найден{where}")
+        inside = f" inside \"{HeadingPath(path.segments[:depth])}\"" if depth else ""
+        super().__init__(f"section \"{path.segments[depth]}\"{inside} not found{where}")
 
 
 class Ambiguous(MdError):
     def __init__(self, path: "HeadingPath", depth: int, found: list["Heading"]) -> None:
         self.path = path
         self.found = found
-        listed = ", ".join(f"\"{h}\" (строка {h.line + 1})" for h in found[:5])
-        more = f" и ещё {len(found) - 5}" if len(found) > 5 else ""
-        super().__init__(f"шаблон \"{path.segments[depth]}\" неоднозначен: {len(found)} совпадения — {listed}{more}; "
-                         "уточни начало заголовка или укажи путь через \" > \"")
+        listed = ", ".join(f"\"{h}\" (line {h.line + 1})" for h in found[:5])
+        more = f" and {len(found) - 5} more" if len(found) > 5 else ""
+        super().__init__(f"pattern \"{path.segments[depth]}\" is ambiguous: {len(found)} matches — {listed}{more}; "
+                         "make the heading start more specific or use a path with \" > \"")
 
 
 def normalize_newlines(text: str) -> str:
@@ -107,8 +107,8 @@ class Segment:
         return not rest or not (rest[0].isalnum() or rest[0] == "_")
 
     def compatible(self, other: "Segment") -> bool:
-        """Can both name the same heading? (a promised head="# Раздел 4..." and a reference to
-        "# Раздел 4. Методы")"""
+        """Can both name the same heading? (a promised head="# Chapter 4..." and a reference to
+        "# Chapter 4. Methods")"""
         if self.level != other.level:
             return False
         probe_self = Heading(self.level, self.text, 0, 0)
@@ -136,22 +136,22 @@ class HeadingPath:
 
 
 def parse_path(text: str) -> HeadingPath:
-    """ "# Раздел 5... > ## Выводы" → HeadingPath; errors say what is wrong."""
+    """ "# Chapter 5... > ## Summary" → HeadingPath; errors say what is wrong."""
     parts = [p.strip() for p in text.split(" > ")]
     segments: list[Segment] = []
     for part in parts:
         match = _SEGMENT.match(part)
         if not match:
-            raise MdError(f"шаблон раздела \"{part}\" должен начинаться с # (1–6 знаков #)")
+            raise MdError(f"section pattern \"{part}\" must start with # (1–6 # characters)")
         body = normalize_text(match.group(2))
         prefix = body.endswith("...")
         if prefix:
             body = body[:-3].rstrip()
         if not body:
-            raise MdError(f"в шаблоне \"{part}\" нет текста заголовка")
+            raise MdError(f"pattern \"{part}\" has no heading text")
         segment = Segment(len(match.group(1)), body, prefix)
         if segments and segment.level <= segments[-1].level:
-            raise MdError(f"в пути \"{text}\" уровень \"{segment}\" должен быть глубже, чем \"{segments[-1]}\"")
+            raise MdError(f"in path \"{text}\" the level of \"{segment}\" must be deeper than \"{segments[-1]}\"")
         segments.append(segment)
     return HeadingPath(tuple(segments))
 

@@ -65,7 +65,7 @@ def parse(text: str) -> T:
     """Parse "List[Str]?", "Chunk|ChunkNotFound", "a" ... into a T."""
     tokens = _TOKEN_RE.findall(text)
     if "".join(tokens) != re.sub(r"\s+", "", text):
-        raise ValueError(f"Неверная запись типа: {text!r}")
+        raise ValueError(f"Invalid type: {text!r}")
     pos = 0
 
     def parse_union() -> T:
@@ -79,7 +79,7 @@ def parse(text: str) -> T:
     def parse_one() -> T:
         nonlocal pos
         if pos >= len(tokens) or not re.fullmatch(r"\w+", tokens[pos]):
-            raise ValueError(f"Неверная запись типа: {text!r}")
+            raise ValueError(f"Invalid type: {text!r}")
         name = tokens[pos]
         pos += 1
         if len(name) == 1 and name.islower():
@@ -88,7 +88,7 @@ def parse(text: str) -> T:
             pos += 1
             elem = parse_union()
             if pos >= len(tokens) or tokens[pos] != "]":
-                raise ValueError(f"Нет закрывающей ] в типе {text!r}")
+                raise ValueError(f"Missing ] in type {text!r}")
             pos += 1
             result = T(name, (elem,))
         else:
@@ -100,7 +100,7 @@ def parse(text: str) -> T:
 
     result = parse_union()
     if pos != len(tokens):
-        raise ValueError(f"Лишнее в записи типа: {text!r}")
+        raise ValueError(f"Extra text in type: {text!r}")
     return result
 
 
@@ -129,7 +129,7 @@ class TypeRegistry:
             return
         else:
             if not self.known(t.name):
-                raise ValueError(f"{where}: неизвестный тип {t.name}")
+                raise ValueError(f"{where}: unknown type {t.name}")
             for a in t.args:
                 self.check_known(a, where)
 
@@ -211,4 +211,4 @@ def python_annotation(t: T) -> Any:
         return simple[t.name]
     if t.name == "List":
         return list[python_annotation(t.args[0])] if t.args else list
-    raise ValueError(f"Тип {t} нельзя использовать в аргументе MCP-инструмента")
+    raise ValueError(f"Type {t} cannot be used in an MCP tool argument")

@@ -1,7 +1,7 @@
 """Markdown library of Cortex (no VM inside): headings, sections, heading patterns, edits,
 structure checks, the document map. Built on markdown-it-py.
 
-    structure.py  headings with their sections; patterns "# Раздел 5..." and paths " > "
+    structure.py  headings with their sections; patterns "# Chapter 5..." and paths " > "
     edit.py       lines of a document; insert / replace / delete / move; relevel; join
     check.py      structure issues of a document and of an agent's result
     outline.py    the document map: heading tree, words per section, warnings

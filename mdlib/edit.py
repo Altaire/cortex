@@ -76,7 +76,7 @@ def move_span(lines: list[str], start: int, end: int, locate_target) -> list[str
 def relevel(text: str, top: int) -> str:
     """Shift every heading so that the highest one gets level `top`."""
     if not 1 <= top <= 6:
-        raise MdError(f"relevel: уровень {top} вне 1–6")
+        raise MdError(f"relevel: level {top} is outside 1–6")
     heads = headings(text)
     if not heads:
         return text
@@ -85,7 +85,7 @@ def relevel(text: str, top: int) -> str:
         return text
     deepest = max(h.level for h in heads) + delta
     if deepest > 6:
-        raise MdError(f"relevel top={top}: самый глубокий заголовок получил бы уровень {deepest} (больше 6)")
+        raise MdError(f"relevel top={top}: the deepest heading would get level {deepest} (more than 6)")
     lines = to_lines(text)
     for h in heads:
         lines[h.line] = _ATX.sub(lambda m: m.group(1) + "#" * (len(m.group(2)) + delta), lines[h.line], count=1)

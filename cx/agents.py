@@ -41,15 +41,15 @@ def _prepare(env: Any, result: str, k: int, src: Src) -> Prepared:
     store = env.store
     text = env.text_of(src)                  # waits / fails here if the input is not ready
     if isinstance(src, BlockRef):
-        return Prepared(store.rel(store.block(src.name)), f"блок {src.name}", text)
+        return Prepared(store.rel(store.block(src.name)), f"block {src.name}", text)
     if isinstance(src, ResultRef):
-        return Prepared(store.rel(store.result(src.name)), f"результат {src.name}", text)
+        return Prepared(store.rel(store.result(src.name)), f"result {src.name}", text)
     if isinstance(src, DocRef):
-        return Prepared(src.path, f"документ {src.name} целиком", text)
+        return Prepared(src.path, f"the whole document {src.name}", text)
     if isinstance(src, FileRef):
-        return Prepared(src.path, "файл", text)
+        return Prepared(src.path, "file", text)
     target = store.inputs(result) / f"{k}.md"
-    desc = f"раздел \"{src.path}\" из {src.base.label()}" if isinstance(src, SectionRef) else "текст"
+    desc = f"section \"{src.path}\" of {src.base.label()}" if isinstance(src, SectionRef) else "text"
     return Prepared(store.rel(target), desc, text, target)
 
 
@@ -88,39 +88,39 @@ def _head_text(spec: ResultSpec) -> str:
     head = spec.head
     level = "#" * head.level
     if head.prefix:
-        return (f"заголовка уровня `{level}`, текст которого начинается с «{head.text}» "
-                f"(например: `{level} {head.text} …`)")
-    return f"заголовка `{level} {head.text}`"
+        return (f"a `{level}` heading whose text starts with \"{head.text}\" "
+                f"(for example: `{level} {head.text} …`)")
+    return f"the heading `{level} {head.text}`"
 
 
 def build_prompt(env: Any, result: str, task_text: str, inputs: list[Prepared], spec: ResultSpec,
                  reason: str | None) -> str:
     store = env.store
-    out = [f"# Задание агенту: {result}", "",
-           f"Рабочая папка: `{store.root}`. Все пути ниже — от неё. Изменяй только файлы из шагов 1, 3 и 4.", "",
-           "## Общий контекст", "", env.context_text.strip() or "(нет)", "",
-           "## Задание", "", task_text.strip(), "",
-           "## Входы", ""]
-    out += [f"- `{p.path}` — {p.desc}" for p in inputs] or ["Входов нет."]
-    out += ["", "## Порядок работы", "",
-            f"1. Первым действием создай файл `{store.rel(store.status(result))}` "
-            "(содержимое любое, например время начала).",
-            "2. Выполни задание, прочитав входы.",
-            f"3. Запиши результат в `{store.rel(store.result(result))}` — только текст для документа, "
-            "без обращений к координатору. Требования:"]
+    out = [f"# Agent job: {result}", "",
+           f"Workspace: `{store.root}`. All paths below are relative to it. Change only the files of steps 1, 3 and 4.", "",
+           "## Shared context", "", env.context_text.strip() or "(none)", "",
+           "## Task", "", task_text.strip(), "",
+           "## Inputs", ""]
+    out += [f"- `{p.path}` — {p.desc}" for p in inputs] or ["No inputs."]
+    out += ["", "## Steps", "",
+            f"1. First of all, create the file `{store.rel(store.status(result))}` "
+            "(any content, for example the start time).",
+            "2. Read the inputs and do the task.",
+            f"3. Write the result to `{store.rel(store.result(result))}` — only the text for the document, "
+            "nothing addressed to the coordinator. Requirements:"]
     if spec.head is not None:
-        out.append(f"   - начинается с {_head_text(spec)}; это единственный заголовок уровня "
-                   f"`{'#' * spec.head.level}` в результате;")
+        out.append(f"   - it starts with {_head_text(spec)}; this is the only "
+                   f"`{'#' * spec.head.level}` heading in the result;")
     if spec.has:
-        out.append("   - содержит разделы: " + ", ".join(f"`{p}`" for p in spec.has) + ";")
-    out += ["   - уровни заголовков идут без пропусков: внутри `#` — `##`, внутри `##` — `###`;",
-            "   - без строк вида `=== … ===` и без `@@@`.",
-            f"4. Последним действием запиши сообщение координатору в `{store.rel(store.message(result))}`:",
-            "   первая строка — `STATUS: done` или `STATUS: failed`;",
-            "   дальше — что сделано, какие проблемы, что предлагаешь изменить в плане.",
-            "5. Не изменяй другие файлы: документы правит только Cortex."]
+        out.append("   - it contains the sections: " + ", ".join(f"`{p}`" for p in spec.has) + ";")
+    out += ["   - heading levels do not skip: inside `#` comes `##`, inside `##` comes `###`;",
+            "   - no lines like `=== … ===` and no `@@@`.",
+            f"4. As the very last step, write a message to the coordinator to `{store.rel(store.message(result))}`:",
+            "   the first line is `STATUS: done` or `STATUS: failed`;",
+            "   then: what was done, what problems there were, what you suggest changing in the plan.",
+            "5. Do not change any other files: only Cortex edits the documents."]
     if reason:
-        out += ["", "## Прошлая попытка отклонена", "", reason]
+        out += ["", "## The previous attempt was rejected", "", reason]
     return "\n".join(out) + "\n"
 
 
@@ -152,12 +152,12 @@ def _launch(env: Any, result: str, job: dict[str, Any], task_text: str, inputs: 
             spec: ResultSpec, why: str | None = None) -> Suspend:
     attempts = env.settings["attempts"]
     if job["failures"] >= attempts:
-        return Suspend("decide", result, f"не удалось {job['failures']} из {attempts}: {job.get('last_failure')} — "
-                                         f"поправь задание или: python cortex.py reset {env.store.script} {result}")
+        return Suspend("decide", result, f"failed {job['failures']} of {attempts}: {job.get('last_failure')} — "
+                                         f"fix the task or run: python cortex.py reset {env.store.script} {result}")
     _issue(env, result, job, task_text, inputs, spec)
     detail = f"→ {env.store.rel(env.store.prompt(result))}"
     if job["failures"]:
-        detail += f" (попытка {job['failures'] + 1} из {attempts}: {_short(job.get('last_failure') or '', 120)})"
+        detail += f" (attempt {job['failures'] + 1} of {attempts}: {_short(job.get('last_failure') or '', 120)})"
     elif why:
         detail += f" ({why})"
     return Suspend("launch", result, detail)
@@ -166,7 +166,7 @@ def _launch(env: Any, result: str, job: dict[str, Any], task_text: str, inputs: 
 def run_agent(env: Any, job_value: Any, spec: ResultSpec) -> TextValue:
     if isinstance(job_value, list):
         if not job_value:
-            raise LineError("agenttask: пустой список")
+            raise LineError("agenttask: empty list")
         task, inputs = job_value[0], job_value[1:]
     else:
         task, inputs = job_value, []
@@ -179,10 +179,10 @@ def run_agent(env: Any, job_value: Any, spec: ResultSpec) -> TextValue:
     job.setdefault("failures", 0)
     why = None
     if job.get("hash") not in (None, version):
-        if archive(env, result, job, "задание или входы изменились"):
-            why = f"задание или входы изменились; прошлая попытка — в {store.rel(store.attempts(result))}/{job['archived']}"
+        if archive(env, result, job, "the task or an input changed"):
+            why = f"the task or an input changed; the previous attempt is in {store.rel(store.attempts(result))}/{job['archived']}"
         else:
-            why = "задание или входы изменились"
+            why = "the task or an input changed"
         job.update(failures=0, done=False, last_failure=None, base=None, reported=False)
     job["hash"] = version
 
@@ -191,7 +191,7 @@ def run_agent(env: Any, job_value: Any, spec: ResultSpec) -> TextValue:
         status, body = _message(message)
         if status == "done":
             text = store.read(store.result(result))
-            problems = ([f"нет файла результата {store.rel(store.result(result))}"] if text is None
+            problems = ([f"no result file {store.rel(store.result(result))}"] if text is None
                         else chunk_issues(text, spec.head, list(spec.has)))
             if not problems:
                 if not job.get("done"):
@@ -203,9 +203,9 @@ def run_agent(env: Any, job_value: Any, spec: ResultSpec) -> TextValue:
                 return TextValue(text, result)
             reason = "; ".join(problems)
         elif status == "failed":
-            reason = "агент сообщил о неудаче: " + _short(body or "без пояснений")
+            reason = "the agent reported a failure: " + _short(body or "no details")
         else:
-            reason = "в сообщении нет первой строки STATUS: done или STATUS: failed"
+            reason = "the message has no first line STATUS: done or STATUS: failed"
         archive(env, result, job, reason)
         job["failures"] += 1
         job["last_failure"] = reason
@@ -217,9 +217,9 @@ def run_agent(env: Any, job_value: Any, spec: ResultSpec) -> TextValue:
         elapsed = env.now - status_path.stat().st_mtime
         minutes = max(0, int(elapsed // 60))
         if elapsed <= env.settings["timeout"]:
-            raise Suspend("running", result, f"{minutes} мин")
-        raise Suspend("decide", result, f"запущен {minutes} мин назад, сообщения нет — проверь агента или "
-                                        f"перезапусти: python cortex.py reset {store.script} {result}")
+            raise Suspend("running", result, f"{minutes} min")
+        raise Suspend("decide", result, f"started {minutes} min ago, no message — check the agent or "
+                                        f"restart: python cortex.py reset {store.script} {result}")
     raise _launch(env, result, job, task_text, prepared, spec, why)
 
 
@@ -227,10 +227,10 @@ def reset(env_store: Any, state: dict[str, Any], result: str) -> str:
     """python cortex.py reset SCRIPT RESULT — the job starts over: launch, attempts from zero."""
     job = state["jobs"].get(result)
     if job is None:
-        raise LineError(f"в скрипте {env_store.script} нет задания {result}")
+        raise LineError(f"script {env_store.script} has no job {result}")
 
     class _Env:
         store = env_store
-    moved = archive(_Env, result, job, "reset координатором")
+    moved = archive(_Env, result, job, "reset by the coordinator")
     job.update(failures=0, done=False, last_failure=None, base=None, reported=False, hash=None)
-    return f"{result}: " + ("файлы попытки перенесены в attempts/, " if moved else "") + "следующий прогон — launch"
+    return f"{result}: " + ("the attempt files were moved to attempts/, " if moved else "") + "the next run will show launch"

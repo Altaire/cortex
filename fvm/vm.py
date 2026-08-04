@@ -72,7 +72,7 @@ class Frame:
     def get(self, name: str) -> Any:
         found, value = self.lookup(name)
         if not found:
-            raise ForthError(f"локальное имя {name} не задано")
+            raise ForthError(f"local name {name} is not set")
         return value
 
     def child(self) -> "Frame":
@@ -130,12 +130,12 @@ class Instance:
         for ctl in reversed(levels):
             if ctl.each is not None:
                 body = " ".join(render_code(ctl.each.body, ctl.frame.lookup, memory))
-                rest.append(f"‹EACH готово {ctl.done}, осталось {forth_list(ctl.rest, memory)}: {body} NEXT›")
+                rest.append(f"‹EACH done {ctl.done}, left {forth_list(ctl.rest, memory)}: {body} NEXT›")
             else:
                 rest += render_code(ctl.code[ctl.pc + 1:], ctl.frame.lookup, memory)
         stack = levels[-1].stack if levels else self.stack
         shown_stack = " ".join(memory.show(v) for v in stack)
-        return f"{shown_stack} ▸ {' '.join(rest)}".strip() if rest else f"{shown_stack} ▸ (конец)".lstrip()
+        return f"{shown_stack} ▸ {' '.join(rest)}".strip() if rest else f"{shown_stack} ▸ (end)".lstrip()
 
     def _step(self, text: str) -> None:
         """One step of the run: what happened, then the program that is left."""
@@ -177,7 +177,7 @@ class Instance:
             self._need(stack, 1, "IF", ins.src)
             flag = stack.pop()
             if not isinstance(flag, bool):
-                raise ForthError(f"{ins.src}: IF ждёт Bool, на вершине {self.vm.types.of_value(flag)}")
+                raise ForthError(f"{ins.src}: IF needs a Bool, the top is {self.vm.types.of_value(flag)}")
             await self._code(ins.then if flag else ins.otherwise, frame, stack, depth)
         elif kind is Match:
             self._need(stack, 1, "MATCH", ins.src)
@@ -187,12 +187,12 @@ class Instance:
                     await self._code(body, frame, stack, depth)
                     break
             else:
-                raise ForthError(f"{ins.src}: в MATCH нет ветки для типа {self.vm.types.of_value(top)}")
+                raise ForthError(f"{ins.src}: MATCH has no branch for type {self.vm.types.of_value(top)}")
         elif kind is Each:
             self._need(stack, 1, "EACH", ins.src)
             items = stack.pop()
             if not isinstance(items, list):
-                raise ForthError(f"{ins.src}: EACH ждёт List, на вершине {self.vm.types.of_value(items)}")
+                raise ForthError(f"{ins.src}: EACH needs a List, the top is {self.vm.types.of_value(items)}")
             if ins.parallel:
                 results = await asyncio.gather(*(self._item(ins, item, frame, depth, None) for item in items))
             else:
@@ -220,7 +220,7 @@ class Instance:
         elif kind is Tick:
             stack.append(WordRef(ins.name))
         else:  # pragma: no cover
-            raise ForthError(f"неизвестная инструкция {ins!r}")
+            raise ForthError(f"unknown instruction {ins!r}")
 
     async def _item(self, ins: Each, item: Any, frame: Frame, depth: int, loop: Ctl | None) -> Any:
         stack = [item]
@@ -235,7 +235,7 @@ class Instance:
         else:
             await self._code(ins.body, frame.child(), stack, depth)
         if len(stack) != 1:
-            raise ForthError(f"{ins.src}: тело EACH оставило {len(stack)} значений вместо одного")
+            raise ForthError(f"{ins.src}: the body of EACH left {len(stack)} values instead of one")
         return stack[0]
 
     async def _branch(self, body: list[Any], frame: Frame, depth: int) -> list[Any]:
@@ -245,14 +245,14 @@ class Instance:
 
     def _need(self, stack: list[Any], n: int, what: str, src: str) -> None:
         if len(stack) < n:
-            raise ForthError(f"{src}: {what}: на стеке {len(stack)} значений, нужно {n}")
+            raise ForthError(f"{src}: {what}: {len(stack)} values on the stack, {n} needed")
 
     async def _call(self, word: Word, stack: list[Any], src: str, depth: int, frame: Frame) -> None:
         self.steps += 1
         if self.max_steps is not None and self.steps > self.max_steps:
-            raise ForthError(f"{src}: превышен лимит шагов экземпляра ({self.max_steps})")
+            raise ForthError(f"{src}: the instance step limit is exceeded ({self.max_steps})")
         if self.caps is not None and not word.caps <= self.caps:
-            raise ForthError(f"{src}: слово {word.name} требует прав {sorted(word.caps - self.caps)}")
+            raise ForthError(f"{src}: word {word.name} needs rights {sorted(word.caps - self.caps)}")
         n_in = len(word.sig.inputs)
         self._need(stack, n_in, word.name, src)
         tracing = self.run.tracing and word.trace
@@ -266,7 +266,7 @@ class Instance:
                     outputs = stack[len(stack) - len(word.sig.outputs):] if word.sig.outputs else []
                     ms = (time.perf_counter() - started) * 1000
                     result = " ".join(self.run.memory.label(v) for v in outputs)
-                    self._step(f"{word.name}  {ms:.1f} мс" + (f" → {result}" if result else ""))
+                    self._step(f"{word.name}  {ms:.1f} ms" + (f" → {result}" if result else ""))
             else:
                 base = len(stack) - n_in
                 body_frame = Frame()
@@ -274,13 +274,13 @@ class Instance:
                     ctl = Ctl(word.code, body_frame, stack)
                     token = _control.set(_control.get() + (ctl,))
                     try:
-                        self._step(f"{word.name} → раскрыто ({word.source})")
+                        self._step(f"{word.name} → expanded ({word.source})")
                     finally:
                         _control.reset(token)
                 await self._code(word.code, body_frame, stack, depth + 1)
                 if len(stack) != base + len(word.sig.outputs):
-                    raise ForthError(f"{src}: слово {word.name} {word.sig} оставило "
-                                     f"{len(stack) - base} значений вместо {len(word.sig.outputs)}")
+                    raise ForthError(f"{src}: word {word.name} {word.sig} left "
+                                     f"{len(stack) - base} values instead of {len(word.sig.outputs)}")
         except BaseException as exc:
             frames = getattr(exc, "__fvm_stack__", None)
             if frames is None:
@@ -302,8 +302,8 @@ class Instance:
         args = stack[len(stack) - n_in:]
         for value, expected in zip(args, word.sig.inputs):
             if not self.vm.types.fits(self.vm.types.of_value(value), expected):
-                raise ForthError(f"{src}: {word.name} {word.sig}: получено {self.vm.types.of_value(value)} "
-                                 f"вместо {expected}")
+                raise ForthError(f"{src}: {word.name} {word.sig}: got {self.vm.types.of_value(value)} "
+                                 f"instead of {expected}")
         del stack[len(stack) - n_in:]
         if word.pass_instance:
             args = [self, *args]
@@ -362,7 +362,7 @@ class VM:
                   trace: bool = True, source: Any = None, params: Iterable[str] = ()) -> Word:
         """Add a primitive (normally via @word and register_module)."""
         if exec not in ("inline", "thread", "async"):
-            raise ValueError(f"{name}: exec должен быть inline, thread или async")
+            raise ValueError(f"{name}: exec must be inline, thread or async")
         target = source or getattr(fn, "func", fn)  # the annotated function behind a partial
         word = Word(name=name, sig=Signature.parse(sig), kind="primitive", fn=fn, exec=exec,
                     caps=frozenset(caps), doc=(doc if doc is not None else (target.__doc__ or "")).strip(),
@@ -371,9 +371,9 @@ class VM:
         names = word.sig.input_names
         for param in word.params:
             if param not in names:
-                raise ValueError(f"{name}: параметра {param} нет в стековом комментарии {word.sig}")
+                raise ValueError(f"{name}: parameter {param} is not in the stack comment {word.sig}")
         if word.params and names[len(names) - len(word.params):] != list(word.params):
-            raise ValueError(f"{name}: параметры {word.params} должны быть последними входами {word.sig}, по порядку")
+            raise ValueError(f"{name}: parameters {word.params} must be the last inputs of {word.sig}, in order")
         self._add(word)
         return word
 
@@ -412,12 +412,12 @@ class VM:
             bound.append(self.context[params.pop(0)])
         pass_instance = bool(params) and params[0] == "instance"
         if any(p in self.context or p == "instance" for p in params[1 if pass_instance else 0:]):
-            raise ValueError(f"{name}: параметры контекста (kb, server) и instance должны идти первыми")
+            raise ValueError(f"{name}: context parameters (kb, server) and instance must come first")
         return (functools.partial(function, *bound) if bound else function), pass_instance
 
     def _add(self, word: Word) -> None:
         if word.name in self.words:
-            raise ValueError(f"{word.source}: слово {word.name} уже определено в {self.words[word.name].source}")
+            raise ValueError(f"{word.source}: word {word.name} is already defined in {self.words[word.name].source}")
         for t in (*word.sig.inputs, *word.sig.outputs):
             self.types.check_known(t, f"{word.source}: {word.name}")
         self.words[word.name] = word
@@ -426,7 +426,7 @@ class VM:
         try:
             return self.words[name]
         except KeyError:
-            raise ForthError(f"слово {name} не определено") from None
+            raise ForthError(f"word {name} is not defined") from None
 
     # ----- loading -----
     def load(self, import_python: bool = True) -> None:
@@ -456,11 +456,11 @@ class VM:
         for path in sorted((self.scripts_dir / "mcp").glob("*.fs")):
             tool = compile_template(path.read_text(encoding="utf-8"), self._rel(path))
             if any(t.name == tool.name for t in self.tools):
-                raise ValueError(f"{tool.source}: инструмент {tool.name} уже объявлен")
+                raise ValueError(f"{tool.source}: tool {tool.name} is already declared")
             self._link(tool.code)
             out = checker.check_script(tool.code, tool.file, locals_types={a.name: a.type for a in tool.args})
             if [str(t) for t in out] != ["Response"]:
-                raise ValueError(f"{tool.file}: программа шаблона должна оставить ( Response ), оставляет "
+                raise ValueError(f"{tool.file}: the template program must leave ( Response ), it leaves "
                                  f"( {' '.join(str(t) for t in out)} )")
             self._prepare_tool(tool)
             self.tools.append(tool)
@@ -489,11 +489,11 @@ class VM:
         for ins in code:
             if isinstance(ins, Call):
                 if ins.name not in self.words:
-                    raise ValueError(f"{ins.src}: слово {ins.name} не определено")
+                    raise ValueError(f"{ins.src}: word {ins.name} is not defined")
                 ins.word = self.words[ins.name]
             elif isinstance(ins, Tick):
                 if ins.name not in self.words:
-                    raise ValueError(f"{ins.src}: слово {ins.name} не определено")
+                    raise ValueError(f"{ins.src}: word {ins.name} is not defined")
             elif isinstance(ins, If):
                 self._link(ins.then)
                 self._link(ins.otherwise)
@@ -557,7 +557,7 @@ class VM:
         """Run a word ( -- value ) at load time and return the value."""
         word = self.word(name)
         if word.sig.inputs or len(word.sig.outputs) != 1:
-            raise ValueError(f"{name}: для значения при загрузке нужно слово ( -- значение ), а не {word.sig}")
+            raise ValueError(f"{name}: a load-time value needs a word ( -- value ), not {word.sig}")
         stack = run_sync(lambda: self.run_word(name, kind="load"))
         return stack[-1]
 
@@ -592,16 +592,16 @@ class VM:
         """The values of a call against the types of the template's arguments."""
         for arg in tool.args:
             if arg.name not in arguments:
-                raise ValueError(f"нет аргумента {arg.name}")
+                raise ValueError(f"argument {arg.name} is missing")
             actual = self.types.of_value(arguments[arg.name])
             if not self.types.fits(actual, arg.type):
-                raise ValueError(f"аргумент {arg.name}: ожидается {arg.type}, получено {actual}")
+                raise ValueError(f"argument {arg.name}: expected {arg.type}, got {actual}")
 
     def tool_program(self, tool: Tool, arguments: dict[str, Any]) -> str:
         """The filled program of one call as a runnable script (program.fs of the run)."""
         lines = self.program_lines(tool.code, lambda name: (name in arguments, arguments.get(name)),
                                    Memory(self.types), literal=True)
-        return f"\\ MCP {tool.name} — заполненный шаблон {tool.file}\n" + "\n".join(lines) + "\n"
+        return f"\\ MCP {tool.name} — filled template {tool.file}\n" + "\n".join(lines) + "\n"
 
     async def run_tool(self, tool: Tool, arguments: dict[str, Any], session: Session | None = None) -> str:
         """One MCP call: the template of the tool, filled with the values of the call, checked and
@@ -609,25 +609,25 @@ class VM:
         run = self.new_run("tool", tool.name, {"args": arguments, "session": session.id if session else None})
         started = time.perf_counter()
         try:
-            run.say(f"{tool.name}: шаблон {tool.file}")
+            run.say(f"{tool.name}: template {tool.file}")
             self.check_arguments(tool, arguments)
             program = self.tool_program(tool, arguments)
             run.write("program.fs", program)
-            run.say("программа:", *("    " + line for line in program.splitlines()[1:]))
-            run.say("проверка: ok — " + ", ".join(f"{a.name}:{a.type}" for a in tool.args)
-                    + " -- Response (стековые эффекты проверены при загрузке)")
+            run.say("program:", *("    " + line for line in program.splitlines()[1:]))
+            run.say("check: ok — " + ", ".join(f"{a.name}:{a.type}" for a in tool.args)
+                    + " -- Response (stack effects checked at load time)")
             instance = Instance(self, "req", run, ALL_CAPS, session)
             frame = Frame(values=arguments)
             if run.stepping:
-                run.say("  0. начало: параметры подставлены",
+                run.say("  0. start: parameters filled in",
                         "     ▸ " + " ".join(self.program_lines(tool.code, frame.lookup, run.memory)), level="steps")
             stack = await instance.run_code(tool.code, frame)
         except BaseException as exc:
-            run.say(f"ОШИБКА: {type(exc).__name__}: {exc}")
+            run.say(f"ERROR: {type(exc).__name__}: {exc}")
             run.finish(error=exc)
             raise
         response = str(stack[-1])
-        run.say(f"готово за {(time.perf_counter() - started) * 1000:.0f} мс: ответ {len(response)} символов")
+        run.say(f"done in {(time.perf_counter() - started) * 1000:.0f} ms: answer of {len(response)} characters")
         run.finish(response=response)
         return response
 
@@ -636,7 +636,7 @@ class VM:
         code = self.compile_script(text, file)
         run = self.new_run(kind, Path(file).stem)
         instance = Instance(self, kind, run, caps)
-        run.say(f"скрипт {file}:", *("    " + line for line in self.program_lines(code, Frame().lookup, run.memory)))
+        run.say(f"script {file}:", *("    " + line for line in self.program_lines(code, Frame().lookup, run.memory)))
         try:
             return await instance.run_code(code)
         except BaseException as exc:

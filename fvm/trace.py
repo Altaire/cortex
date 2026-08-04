@@ -150,7 +150,7 @@ def describe_error(error: BaseException) -> str:
     lines = [f"{type(error).__name__}: {error}", ""]
     chain = getattr(error, "__fvm_stack__", [])
     if chain:
-        lines.append("Слова Forth (изнутри наружу):")
+        lines.append("Forth words (innermost first):")
         lines.extend(f"  {frame}" for frame in chain)
         lines.append("")
     lines.append("".join(traceback.format_exception(type(error), error, error.__traceback__)))
@@ -167,7 +167,7 @@ def render_tree(records: list[dict[str, Any]]) -> str:
     for entry in sorted(records, key=lambda e: (e.get("vm", ""), e["step"])):
         ins = ", ".join(str(v) for v in entry.get("in", []))
         outs = ", ".join(str(v) for v in entry.get("out", []))
-        status = f"ОШИБКА {entry['error']}" if entry.get("error") else f"{ins} → {outs}".strip()
+        status = f"ERROR {entry['error']}" if entry.get("error") else f"{ins} → {outs}".strip()
         lines.append(f"{'  ' * entry['depth']}{entry['word']:<{max(1, 40 - 2 * entry['depth'])}} "
-                     f"{entry['ms']:>8.1f} мс  {status}   [{entry.get('vm', '')} {entry.get('src', '')}]")
+                     f"{entry['ms']:>8.1f} ms  {status}   [{entry.get('vm', '')} {entry.get('src', '')}]")
     return "\n".join(lines)

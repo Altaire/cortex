@@ -117,7 +117,7 @@ class Store:
         try:
             state = json.loads(text)
         except json.JSONDecodeError as exc:
-            raise CortexError(f"{self.rel(self.state_file)} повреждён: {exc}") from None
+            raise CortexError(f"{self.rel(self.state_file)} is corrupted: {exc}") from None
         state.setdefault("jobs", {})
         state.setdefault("run", 0)
         return state
@@ -139,10 +139,10 @@ class Store:
                 info = (self.read(path) or "").split()
                 pid = int(info[0]) if info and info[0].isdigit() else None
                 if pid is not None and pid != os.getpid() and _alive(pid):
-                    raise CortexError(f"идёт другой прогон Cortex (pid {pid}); если это не так, удали {self.rel(path)}")
+                    raise CortexError(f"another Cortex run is in progress (pid {pid}); if not, delete {self.rel(path)}")
                 path.unlink(missing_ok=True)
         if fd is None:
-            raise CortexError(f"не удалось взять блокировку {self.rel(path)}")
+            raise CortexError(f"could not take the lock {self.rel(path)}")
         os.write(fd, f"{os.getpid()} {time.strftime('%Y-%m-%d %H:%M:%S')} {self.script}\n".encode())
         os.close(fd)
         try:

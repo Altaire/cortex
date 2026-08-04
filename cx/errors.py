@@ -12,7 +12,7 @@ class CortexError(Exception):
     def __init__(self, message: str, line: int | None = None) -> None:
         self.line = line
         self.message = message
-        super().__init__(f"строка {line}: {message}" if line else message)
+        super().__init__(f"line {line}: {message}" if line else message)
 
 
 class LineError(Exception):

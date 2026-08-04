@@ -117,16 +117,16 @@ class Env:
         if isinstance(src, DocRef):
             line = self.earlier_write(src.name)
             if line is not None:
-                raise self.wait(f"ждёт строку ⟨{line.number}⟩: запись в {src.name}")
+                raise self.wait(f"waits for line ⟨{line.number}⟩: a write to {src.name}")
             return from_lines(self.doc_lines(src))
         if isinstance(src, FileRef):
             text = self.store.read(self.store.root / src.path)
             if text is None:
-                raise LineError(f"файл {src.path} не найден")
+                raise LineError(f"file {src.path} not found")
             return text
         if isinstance(src, SectionRef):
             return self.section_text(src)
-        raise LineError(f"у значения {src!r} нет текста")
+        raise LineError(f"value {src!r} has no text")
 
     def block_text(self, name: str) -> str:
         block = self.program.blocks.get(name)
@@ -134,7 +134,7 @@ class Env:
             return block.text
         text = self.store.read_block(name)
         if text is None:
-            raise LineError(f"блок {name} не найден")
+            raise LineError(f"block {name} not found")
         return text
 
     def result_text(self, name: str) -> str:
@@ -144,17 +144,17 @@ class Env:
             return path.read_text(encoding="utf-8")
         producer = self.program.producers.get(name)
         if producer is not None and producer.number not in self.completed:
-            raise self.wait(f"ждёт {name}")
+            raise self.wait(f"waits for {name}")
         if job.get("done"):
-            raise LineError(f"результат {name} отмечен готовым, но файла {self.store.rel(path)} нет")
-        raise LineError(f"результат {name} не готов, и ни одна строка скрипта его не создаёт")
+            raise LineError(f"result {name} is marked done, but {self.store.rel(path)} is missing")
+        raise LineError(f"result {name} is not ready and no line of the script produces it")
 
     def section_text(self, ref: SectionRef) -> str:
         base = ref.base
         if isinstance(base, DocRef):
             changer = self.changer(base.name, ref.path)
             if changer is not None:
-                raise self.wait(f"ждёт строку ⟨{changer.number}⟩: она меняет \"{changer.write.target}\" в {base.name}")
+                raise self.wait(f"waits for line ⟨{changer.number}⟩: it changes \"{changer.write.target}\" in {base.name}")
             lines = self.doc_lines(base)
             head = self.heading(base, lines, ref.path)
             return from_lines(lines[head.line:head.end])
@@ -171,7 +171,7 @@ class Env:
             text = self.store.read(self.store.root / doc.path)
             if text is None:
                 if doc.name not in self.program.creates:
-                    raise LineError(f"файл {doc.path} не найден (alias {doc.name})")
+                    raise LineError(f"file {doc.path} not found (alias {doc.name})")
                 text = ""
             self.docs[doc.name] = to_lines(text)
         return self.docs[doc.name]
@@ -182,7 +182,7 @@ class Env:
         except NotFound as exc:
             promised = self.promise(doc.name, path)
             if promised is not None:
-                raise self.wait(f"ждёт раздел \"{path}\" из строки ⟨{promised.number}⟩") from None
+                raise self.wait(f"waits for section \"{path}\" from line ⟨{promised.number}⟩") from None
             raise LineError(f"{doc.name}: {exc}") from None
         except Ambiguous as exc:
             raise LineError(f"{doc.name}: {exc}") from None
@@ -198,7 +198,7 @@ class Env:
     def in_order(self, doc: DocRef) -> None:
         line = self.earlier_write(doc.name)
         if line is not None:
-            raise self.wait(f"ждёт строку ⟨{line.number}⟩: записи в {doc.name} идут по порядку строк")
+            raise self.wait(f"waits for line ⟨{line.number}⟩: writes to {doc.name} go in line order")
 
     # ----- the words -----
     def insert(self, src: Src, doc: DocRef, pos: Pos, side: str) -> None:
@@ -219,9 +219,9 @@ class Env:
         agent = self.line.agent
         base = (self.state["jobs"].get(agent.result) or {}).get("base") if agent else None
         if base is not None and base != digest(from_lines(lines[head.line:head.end])):
-            raise LineError(f"раздел \"{head}\" в {doc.name} изменился после запуска агента {agent.result}: замена "
-                            f"не выполнена — перезапусти задание (python cortex.py reset {self.store.script} "
-                            f"{agent.result}) или реши иначе")
+            raise LineError(f"section \"{head}\" in {doc.name} changed after agent {agent.result} was launched: the "
+                            f"replace was not done — restart the job (python cortex.py reset {self.store.script} "
+                            f"{agent.result}) or decide otherwise")
         self.staged.append(("doc", doc, replace_span(lines, head.line, head.end, text)))
 
     def delete(self, doc: DocRef, pattern: Pattern) -> None:
@@ -239,7 +239,7 @@ class Env:
         try:
             index = self.index(doc, rest, pos, side)
         except LineError as exc:
-            raise LineError(f"{exc} (место ищется без перемещаемого раздела)") from None
+            raise LineError(f"{exc} (the place is looked up without the section being moved)") from None
         issue = capture_issue(rest, index, chunk)
         if issue:
             raise LineError(f"{doc.name}: {issue}")
@@ -258,12 +258,12 @@ class Env:
             fresh = issue_counter(after) - issue_counter(before)
             if fresh:
                 texts = list(dict.fromkeys(str(i) for i in after if i.key in fresh))
-                raise LineError(f"структура {target.name}: " + "; ".join(texts))
+                raise LineError(f"structure of {target.name}: " + "; ".join(texts))
             if before and target.name not in self.noted:
                 self.noted.add(target.name)
-                self.summary.add("note", f"{target.name}: в документе уже есть нарушения структуры — "
+                self.summary.add("note", f"{target.name}: the document already has structure problems — "
                                          + "; ".join(str(i) for i in before[:2])
-                                         + (f" и ещё {len(before) - 2}" if len(before) > 2 else ""))
+                                         + (f" and {len(before) - 2} more" if len(before) > 2 else ""))
             self._check_patterns(target, old_text, new_text)
         for kind, target, payload in self.staged:
             if kind == "doc":
@@ -294,7 +294,7 @@ class Env:
                         continue          # it was ambiguous already: that line reports it itself
                     except NotFound:
                         pass
-                    raise LineError(f"после записи шаблон \"{path}\" строки ⟨{ln.number}⟩ станет неоднозначным в "
-                                    f"{doc.name}: уточни заголовок или шаблон") from None
+                    raise LineError(f"after this write the pattern \"{path}\" of line ⟨{ln.number}⟩ would become ambiguous in "
+                                    f"{doc.name}: make the heading or the pattern more specific") from None
                 except NotFound:
                     continue

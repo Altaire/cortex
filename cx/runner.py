@@ -46,22 +46,22 @@ def make_vm(env: Env) -> VM:
 def describe_done(line: Any) -> str:
     write = line.write
     if write is None:
-        return f"{line.obj} готов"
+        return f"{line.obj} is ready"
     if write.word == "insert":
         return f"{line.obj} → {write.doc.name} {write.side} {write.pos.describe()}"
     if write.word == "replace":
-        return f"{line.obj} → {write.doc.name} вместо \"{write.target}\""
+        return f"{line.obj} → {write.doc.name} replaces \"{write.target}\""
     if write.word == "delete":
-        return f"{write.doc.name}: удалён \"{write.target}\""
+        return f"{write.doc.name}: deleted \"{write.target}\""
     if write.word == "move":
-        return f"{write.doc.name}: \"{write.target}\" перемещён {write.side} {write.pos.describe()}"
+        return f"{write.doc.name}: \"{write.target}\" moved {write.side} {write.pos.describe()}"
     return f"{line.obj} → \"{write.path}\""
 
 
 async def run_lines(vm: VM, env: Env, program: Program, run: Run, summary: Summary, err: TextIO) -> None:
     for line in program.lines:
         env.begin_line(line)
-        run.say(f"строка {line.number}: {line.text.strip()}")
+        run.say(f"line {line.number}: {line.text.strip()}")
         completed = False
         try:
             await Instance(vm, "line", run).run_code(line.code)
@@ -76,7 +76,7 @@ async def run_lines(vm: VM, env: Env, program: Program, run: Run, summary: Summa
             summary.add("decide", f"{line.label} ({exc})")
             run.say("  → decide: " + LINE_REF.sub(r"\1", str(exc)))
         except Exception as exc:  # a bug: the line stays, the run goes on
-            summary.add("decide", f"{line.label} (внутренняя ошибка {type(exc).__name__}: {exc})")
+            summary.add("decide", f"{line.label} (internal error {type(exc).__name__}: {exc})")
             traceback.print_exc(file=err)
         finally:
             env.end_line(completed)
@@ -92,7 +92,7 @@ def render(program: Program, env: Env, summary: Summary, run_number: int, dry: b
     if dry:
         if program.run_marker is not None:
             out.append(f"\\ run {program.run_marker}")
-        out.append(f"\\ plan · {stamp} · прогноз: ничего не выполнено и не записано, строки ниже — как на входе")
+        out.append(f"\\ plan · {stamp} · forecast: nothing was executed or written, the lines below are as given")
         lines = program.lines
     else:
         out.append(f"\\ run {run_number} · {stamp}")
@@ -117,17 +117,17 @@ def render(program: Program, env: Env, summary: Summary, run_number: int, dry: b
 def autocommit(root: Path, paths: list[str], message: str, err: TextIO) -> None:
     git = shutil.which("git")
     if git is None:
-        print("cortex: autocommit — git не найден", file=err)
+        print("cortex: autocommit — git not found", file=err)
         return
     inside = subprocess.run([git, "-C", str(root), "rev-parse", "--is-inside-work-tree"], capture_output=True, text=True)
     if inside.returncode != 0:
-        print("cortex: autocommit — рабочая папка не в git-репозитории", file=err)
+        print("cortex: autocommit — the workspace is not in a git repository", file=err)
         return
     specs = list(dict.fromkeys(paths)) + [".cortex", ":(exclude).cortex/lock"]
     add = subprocess.run([git, "-C", str(root), "add", "--", *specs], capture_output=True, text=True)
     commit = subprocess.run([git, "-C", str(root), "commit", "-q", "-m", message], capture_output=True, text=True)
     if add.returncode or commit.returncode:
-        print(f"cortex: autocommit не удался: {(add.stderr or commit.stderr or commit.stdout).strip()}", file=err)
+        print(f"cortex: autocommit failed: {(add.stderr or commit.stderr or commit.stdout).strip()}", file=err)
     else:
         print(f"cortex: autocommit — {message}", file=err)
 
@@ -149,12 +149,12 @@ def execute(text: str, root: Path, mode: str, out: TextIO = sys.stdout, err: Tex
             state = store.load_state()
             last = state["run"]
             if not dry and last and stream.run_marker is None:
-                raise CortexError(f"скрипт {script} уже выполнялся (прогон {last}); продолжай с "
-                                  f"{store.rel(store.script_file)} — или назови скрипт иначе")
+                raise CortexError(f"script {script} has already run (run {last}); continue with "
+                                  f"{store.rel(store.script_file)} — or give the script another name")
             if not dry and stream.run_marker is not None and stream.run_marker < last:
-                raise CortexError(f"это вывод прогона {stream.run_marker}, а последний прогон — {last}; "
-                                  f"продолжай с {store.rel(store.script_file)}")
-            missing = [CortexError(f"файл {doc.path} не найден (alias {name}); для нового файла — "
+                raise CortexError(f"this is the output of run {stream.run_marker}, but the last run is {last}; "
+                                  f"continue with {store.rel(store.script_file)}")
+            missing = [CortexError(f"file {doc.path} not found (alias {name}); for a new file use "
                                    f"\"{doc.path}\" create {name}")
                        for name, doc in decls.aliases.items()
                        if name not in decls.creates and not (store.root / doc.path).exists()]
@@ -183,10 +183,10 @@ def execute(text: str, root: Path, mode: str, out: TextIO = sys.stdout, err: Tex
                 stale = {r: j for r, j in state["jobs"].items() if j.get("context") not in (None, context_hash)}
                 done_old = sorted(r for r, j in stale.items() if j.get("done"))
                 started_old = sorted(r for r, j in stale.items() if not j.get("done") and store.status(r).exists())
-                parts = ([f"выполнены по старой версии: {', '.join(done_old)}"] if done_old else []) + \
-                        ([f"агенты работают по старой версии: {', '.join(started_old)}"] if started_old else [])
+                parts = ([f"done with the old version: {', '.join(done_old)}"] if done_old else []) + \
+                        ([f"agents work with the old version: {', '.join(started_old)}"] if started_old else [])
                 if parts:
-                    summary.add("note", "context изменился; " + "; ".join(parts))
+                    summary.add("note", "context changed; " + "; ".join(parts))
             state["context_hash"] = context_hash
             env.start(store=store, program=program, state=state, dry=dry, summary=summary, context_text=context)
             history = None if dry else store.history_dir(run_number)
@@ -206,7 +206,7 @@ def execute(text: str, root: Path, mode: str, out: TextIO = sys.stdout, err: Tex
                 if program.settings["autocommit"] and env.changed:
                     counts = ", ".join(f"{k} {summary.count(k)}" for k in ("done", "launch", "waiting", "decide")
                                        if summary.count(k))
-                    commit_args = (env.changed, f"cortex {script} run {run_number}: {counts or 'без изменений'}")
+                    commit_args = (env.changed, f"cortex {script} run {run_number}: {counts or 'no changes'}")
     except CompileErrors as exc:
         return _report(exc.errors, err)
     except CortexError as exc:
@@ -214,11 +214,11 @@ def execute(text: str, root: Path, mode: str, out: TextIO = sys.stdout, err: Tex
     out.write(output)
     out.flush()
     if dry:
-        print("cortex: прогноз — ничего не выполнено и не записано", file=err)
+        print("cortex: forecast — nothing was executed or written", file=err)
     else:
-        print(f"cortex: сохранено  {store.rel(store.script_file)}", file=err)
-        print(f"cortex: история   {store.rel(history)}/", file=err)
-        print(f"cortex: дальше    python cortex.py < {store.rel(store.script_file)}", file=err)
+        print(f"cortex: saved    {store.rel(store.script_file)}", file=err)
+        print(f"cortex: history  {store.rel(history)}/", file=err)
+        print(f"cortex: next     python cortex.py < {store.rel(store.script_file)}", file=err)
         if commit_args is not None:
             autocommit(store.root, *commit_args, err)
     return 0
@@ -226,6 +226,6 @@ def execute(text: str, root: Path, mode: str, out: TextIO = sys.stdout, err: Tex
 
 def _report(errors: list[CortexError], err: TextIO) -> int:
     for exc in errors:
-        print(f"cortex: ошибка: {exc}", file=err)
-    print("cortex: ничего не выполнено", file=err)
+        print(f"cortex: error: {exc}", file=err)
+    print("cortex: nothing was executed", file=err)
     return 1

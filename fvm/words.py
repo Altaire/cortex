@@ -24,7 +24,7 @@ class Signature:
         if body.endswith(")"):
             body = body[:-1]
         if "--" not in body:
-            raise ValueError(f"В стековом комментарии нет «--»: ( {body.strip()} )")
+            raise ValueError(f"No \"--\" in the stack comment: ( {body.strip()} )")
         left, right = body.split("--", 1)
         names, inputs = _items(left)
         _out_names, outputs = _items(right)

@@ -109,10 +109,10 @@ stdout (the remaining script; the same text is saved to `.cortex/scripts/book.co
 script book
 "book.md" alias main
 
-\ run 1 · 2026-11-01 03:06
+\ run 1 · 2026-11-01 03:11
 \ done:     note → main after "# Chapter 1..."
 \ launch:   task3.out → .cortex/work/book/prompts/task3.out.md
-\ waiting:  task4.out (ждёт task3.out)
+\ waiting:  task4.out (waits for task3.out)
 
 task3 agenttask {task3.out head="# Chapter 3..." has=["# Chapter 3... > ## Summary"]} insert to=main after="# Chapter 2..."
 [task4, task3.out] agenttask {task4.out head="# Chapter 4..."} insert to=main before=END
@@ -121,16 +121,49 @@ task3 agenttask {task3.out head="# Chapter 3..." has=["# Chapter 3... > ## Summa
 stderr:
 
 ```
-cortex: сохранено  .cortex/scripts/book.cortex
-cortex: история   .cortex/history/book/001/
-cortex: дальше    python cortex.py < .cortex/scripts/book.cortex
+cortex: saved    .cortex/scripts/book.cortex
+cortex: history  .cortex/history/book/001/
+cortex: next     python cortex.py < .cortex/scripts/book.cortex
 ```
 
 How to read run 1:
 
 - `done:` — the note is already in `book.md`, and its line has left the script.
 - `launch:` — start an agent and tell it: *"Follow the instructions in `.cortex/work/book/prompts/task3.out.md`"*. The instructions contain the context, the task and the inputs, plus the files to write: a start mark, the result, and a message whose first line is `STATUS: done` or `STATUS: failed`.
-- `waiting:` — `task4.out` needs `task3.out`, which does not exist yet. (`ждёт` means "waits for".)
+- `waiting:` — `task4.out` needs `task3.out`, which does not exist yet.
+
+The instructions Cortex wrote for the agent (`prompts/task4.out.md` from the next run):
+
+```markdown
+# Agent job: task4.out
+
+Workspace: `/path/to/workspace`. All paths below are relative to it. Change only the files of steps 1, 3 and 4.
+
+## Shared context
+
+Write concisely, in a neutral academic tone.
+
+## Task
+
+Using chapter 3, write chapter 4 (Discussion).
+
+## Inputs
+
+- `.cortex/work/book/results/task3.out.md` — result task3.out
+
+## Steps
+
+1. First of all, create the file `.cortex/work/book/status/task4.out` (any content, for example the start time).
+2. Read the inputs and do the task.
+3. Write the result to `.cortex/work/book/results/task4.out.md` — only the text for the document, nothing addressed to the coordinator. Requirements:
+   - it starts with a `#` heading whose text starts with "Chapter 4" (for example: `# Chapter 4 …`); this is the only `#` heading in the result;
+   - heading levels do not skip: inside `#` comes `##`, inside `##` comes `###`;
+   - no lines like `=== … ===` and no `@@@`.
+4. As the very last step, write a message to the coordinator to `.cortex/work/book/messages/task4.out.md`:
+   the first line is `STATUS: done` or `STATUS: failed`;
+   then: what was done, what problems there were, what you suggest changing in the plan.
+5. Do not change any other files: only Cortex edits the documents.
+```
 
 Lines that start with `\` are comments. Cortex writes the summary as comments and ignores them on input.
 
@@ -141,7 +174,7 @@ python cortex.py < .cortex/scripts/book.cortex
 ```
 
 ```
-\ run 2 · 2026-11-01 03:06
+\ run 2 · 2026-11-01 03:11
 \ done:     task3.out → main after "# Chapter 2..."
 \ launch:   task4.out → .cortex/work/book/prompts/task4.out.md
 \ message:  task3.out → .cortex/work/book/messages/task3.out.md
@@ -154,7 +187,7 @@ Cortex first checked the result. It has the right heading and the required `## S
 ### Run 3: the second agent has finished
 
 ```
-\ run 3 · 2026-11-01 03:06
+\ run 3 · 2026-11-01 03:11
 \ status: done
 \ done:     task4.out → main before END
 ```
@@ -162,7 +195,7 @@ Cortex first checked the result. It has the right heading and the required `## S
 `python cortex.py outline book.md` now prints the map of the document:
 
 ```
-book.md · 31 слов · заголовков 5
+book.md · 31 words · 5 headings
 # Chapter 1. Introduction       12
 # Chapter 2. Methods             5
 # Chapter 3. Results             9
@@ -184,7 +217,20 @@ book.md · 31 слов · заголовков 5
 | The script has an error (unknown word or name, a missing parameter, two writes on one line…) | Lists every error with its line number and runs nothing. |
 | An old or original version of the script is fed again | Refuses it, so that nothing is inserted twice. |
 
-Status and error messages are currently in Russian. Key words such as `done`, `launch` and `decide` are in English.
+Errors name the line and suggest a fix. For example:
+
+```
+cortex: error: line 3: unknown word "insеrt": Cyrillic letters (е) — did you mean insert?
+cortex: error: line 4: unknown name or word "mian" — did you mean main?
+cortex: nothing was executed
+```
+
+A failed attempt shows up in the summary like this:
+
+```
+\ launch:   bad.out → .cortex/work/t/prompts/bad.out.md (attempt 2 of 2: the agent reported a failure: No data.)
+\ waiting:  line 10 · jump (waits for line 9: writes to d go in line order)
+```
 
 ## Language in one screen
 
